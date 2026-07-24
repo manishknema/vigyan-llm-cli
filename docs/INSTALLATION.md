@@ -77,6 +77,12 @@ it. That can save significant disk space across multiple Node-based CLIs. The
 installer therefore asks where the pnpm home and store should live, then checks
 whether hardlinks are safe.
 
+The installer must prefer the user's existing package-manager configuration
+before inventing paths. It should read `PNPM_HOME`, `PNPM_STORE_PATH`, npm
+prefix/cache settings, conda roots, and uv/pip cache settings, then prompt only
+when the selected roots are missing or likely to break CAS/hardlink behavior.
+No public Windows default should assume a specific drive letter.
+
 ### conda plus uv keeps Python sane
 
 conda is useful for heavyweight base environments. uv is useful for fast Python
@@ -94,6 +100,10 @@ wrapper/user-space provenance if auditd is not available.
 Windows can be installed locally. Remote install from a Linux controller is only
 used when normal SSH or reverse SSH is already proven. Otherwise the installer
 should produce a bundle/manual install path.
+
+When remote SSH is used, Git Bash should be invoked through
+`C:\Program Files\Git\bin\bash.exe`; `git-bash.exe` is a GUI launcher and is
+not the remote automation path.
 
 ### Skills are for agents, not users
 

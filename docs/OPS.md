@@ -310,7 +310,25 @@ Interactive install must ask for or confirm:
 
 For Windows, prompts should accept Git Bash paths and display the equivalent
 Windows path when possible. No public default should assume a specific drive
-letter. For VVC, the operator may choose a custom drive/root.
+letter. The installer resolves package-manager CAS/cache roots from explicit
+environment variables and tool config first, then prompts if the result is
+missing or unsafe. A custom drive/root is an operator choice, not a product
+requirement.
+
+Resolution order:
+
+1. Explicit environment: `PNPM_HOME`, `PNPM_STORE_PATH`,
+   `NPM_CONFIG_PREFIX`, `NPM_CONFIG_CACHE`, `CONDA_PKGS_DIRS`,
+   `CONDA_ENVS_PATH`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`.
+2. Package-manager config: `pnpm config`, npm config, conda config, uv/pip
+   environment.
+3. User-scoped defaults under the current user's home/profile.
+4. Interactive prompt when the selected root crosses a filesystem/device
+   boundary that would defeat content-addressable hardlink savings.
+
+Cluster integrations such as VVC may adapt these roots to their own shared
+storage layout, but that belongs in the cluster adapter and must not leak into
+standalone defaults.
 
 ### Provenance Prerequisites
 
@@ -343,6 +361,10 @@ controller needs an explicit readiness check. The questionnaire should record:
 If SSH or reverse SSH is not proven, the installer must not pretend remote
 Windows deployment is available. It should fall back to bundle generation plus
 manual extraction/run instructions.
+
+For noninteractive SSH automation, invoke Git Bash through the shell binary, for
+example `C:\Program Files\Git\bin\bash.exe`. Do not use GUI launchers such as
+`git-bash.exe` for remote installer execution.
 
 ### Filesystem And Link Strategy
 

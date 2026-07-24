@@ -62,6 +62,8 @@ Requirements:
 - no admin required for normal install/upgrade
 - user-owned wrapper/bin paths
 - user-owned pnpm/npm/conda/uv roots
+- CAS/cache roots discovered from environment and package-manager config before
+  prompting; no hardcoded Windows drive letters
 - auth/config/state under user profile
 - no dependency on cluster infrastructure by default
 - governed shell/provenance wrapper installed for the user
@@ -132,6 +134,9 @@ user-scoped and must not assume a VVC drive layout.
 - storage/filesystem profile decides link strategy
 - Linux must support both ext-family/default filesystems and ZFS-backed roots
 - Windows must support Git Bash paths over NTFS and optional custom drive roots
+- Windows SSH automation must invoke the Git Bash shell binary, not GUI
+  launchers, and must fall back to bundle/manual install when remote execution
+  is not proven
 - installers must probe whether hardlinks, symlinks, and Windows directory
   junctions are available before relying on them
 - fallback order must be explicit: hardlink when safe, symlink/junction when
