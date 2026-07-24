@@ -306,6 +306,8 @@ Interactive install must ask for or confirm:
 | `NPM_CONFIG_PREFIX` | npm-compatible global prefix when needed |
 | `CONDA_PKGS_DIRS` | conda package cache |
 | `CONDA_ENVS_PATH` | conda environment root |
+| `VIGYAN_LLM_CLI_CONDA_ENV` | managed helper env name, default `llm-cli-py` |
+| `VIGYAN_LLM_CLI_PYTHON_VERSION` | optional Python version override; default is detected from governed Conda base |
 | `UV_CACHE_DIR` | uv cache |
 | `PIP_CACHE_DIR` | pip cache fallback |
 
@@ -320,7 +322,8 @@ Resolution order:
 
 1. Explicit environment: `PNPM_HOME`, `PNPM_STORE_PATH`,
    `NPM_CONFIG_PREFIX`, `NPM_CONFIG_CACHE`, `CONDA_PKGS_DIRS`,
-   `CONDA_ENVS_PATH`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`.
+   `CONDA_ENVS_PATH`, `VIGYAN_LLM_CLI_CONDA_ENV`,
+   `VIGYAN_LLM_CLI_PYTHON_VERSION`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`.
 2. Package-manager config: `pnpm config`, npm config, conda config, uv/pip
    environment.
 3. User-scoped defaults under the current user's home/profile.
@@ -328,8 +331,12 @@ Resolution order:
    boundary that would defeat content-addressable hardlink savings.
 
 Cluster integrations such as VVC may adapt these roots to their own shared
-storage layout, but that belongs in the cluster adapter and must not leak into
-standalone defaults.
+storage presets, but public installation stays questionnaire-driven. There
+should be one installer with OS-specific adapters: it installs or verifies
+Git Bash/PowerShell/cmd launchers on Windows, pnpm/node roots, Conda, uv, the
+managed `llm-cli-py` Python helper env, and selected capabilities from the same
+persisted answers. VVC's `/vigyan` layout is one preset, not the default path
+contract.
 
 ### Provenance Prerequisites
 

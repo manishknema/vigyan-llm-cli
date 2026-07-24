@@ -124,20 +124,30 @@ user-scoped and must not assume a VVC drive layout.
 #### Python
 
 - `conda` + `uv` is the preferred Python tooling model
-- Windows users should install Miniconda/Miniforge for the current user and keep
-  a working base Python; `llm-cli` must not require manual conda activation for
-  wrapper hooks or config merges
-- `VIGYAN_PYTHON` is the explicit override for the Python binary used by hooks,
-  telemetry, JSON config merges, and installer helpers
+- Windows users should install Miniconda/Miniforge for the current user; `llm-cli`
+  must not require manual conda activation for wrapper hooks or config merges
+- Linux and Windows `llm-cli` create or reuse a managed conda env named
+  `llm-cli-py` for hooks, telemetry, JSON config merges, and installer helpers
+- `VIGYAN_PYTHON` is the generated wrapper value pointing at that managed env;
+  a user-supplied external Python requires an explicit opt-in escape hatch
 - Windows installers must validate Python candidates and reject the Microsoft
   Store shim; `UV_PYTHON_INSTALL_DIR` and `UV_TOOL_DIR` are roots to search, not
   necessarily executable paths themselves
-- Windows discovery should check PowerShell profile/env, PATH-derived
-  `condabin -> base`, `conda info --base`, and registry/uninstall metadata before
-  prompting for a Python path
+- Windows discovery should check `CONDA_EXE` when Conda/MSYS2 shell integration
+  injected it, `where.exe conda`, PowerShell profile/env, PATH-derived
+  `condabin -> Scripts\conda.exe`, `conda info --base`, and registry/uninstall
+  metadata before prompting for a Python path
+- If Anaconda default channels require Terms of Service acceptance, installers
+  must require explicit paired flags such as
+  `--accept-anaconda-tos --i-accept-anaconda-tos`
 - rationale: reproducible heavy base envs plus fast package/venv workflows
 - prompts/flags must cover `CONDA_PKGS_DIRS`, `CONDA_ENVS_PATH`,
   `UV_CACHE_DIR`, and `PIP_CACHE_DIR`
+- public install must be questionnaire-driven: install mode, install root,
+  filesystem profile, package/cache roots, conda/uv roots, and selected
+  capabilities are captured before writing paths
+- `/vigyan` is allowed only as a named VVC/ZFS cluster preset; it must not be
+  the public standalone default
 
 #### Filesystem/link strategy
 
