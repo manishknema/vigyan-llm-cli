@@ -1,0 +1,124 @@
+# Installation
+
+## Simple Install
+
+For most users the flow should be:
+
+```bash
+./install.sh
+llm-cli doctor
+claude --version
+codex --version
+gemini --version
+opencode --version
+```
+
+The installer should ask clear questions only when it cannot safely detect the
+answer.
+
+## What The Installer Asks
+
+| Question | Simple Default | Why It Matters |
+|---|---|---|
+| Install mode | `standalone` | Keeps the install user-scoped and avoids admin/root for normal use. |
+| Tooling paths | user home defaults | Keeps package managers from filling unexpected disks. |
+| pnpm store path | same drive/filesystem as global CLIs when possible | Preserves pnpm hardlink/dedupe behavior. |
+| conda/uv cache paths | user-owned paths | Keeps Python tooling reproducible and movable. |
+| Filesystem profile | auto-detect | Chooses hardlink, symlink, junction, or copy safely. |
+| Native auth homes | keep existing | Prevents broken OAuth/login state. |
+| LiteLLM/OpenCode routing | optional | Enables local/open/free models without breaking native CLIs. |
+| PageIndex | optional | Enables bounded repo context retrieval. |
+| Telemetry | optional | Enables token/cache/latency proof. |
+| SSH/reverse SSH | skip unless proven | Windows remote install should not assume connectivity. |
+
+## Capability Dependencies
+
+Default standalone install is small. When you select an optional capability, the
+installer should handle its dependencies and show the result in `llm-cli doctor`.
+
+| Capability | Installer handles |
+|---|---|
+| PageIndex | bundle/server detection, current-repo init, indexing, agent config |
+| LiteLLM/OpenCode | routed client config and model-list verification |
+| SearXNG | endpoint or local service, JSON search verification |
+| telemetry | endpoint or local sink, test event/report verification |
+| OpenObserve-style sink | optional local observability service when selected |
+| nginx/reverse proxy | optional web/proxy surface when selected |
+| auditd | Linux cluster provenance when selected/available |
+| SSH/reverse SSH | reachability proof or manual bundle fallback |
+| agent files | `AGENTS.md`, redirects, and portable skills |
+
+If a dependency comes from another repo or bundle, the installer should clone,
+vendor, download, or ask for the path, then record the source/version in
+`llm-cli doctor`.
+
+Tauri/HomeCloud UI comes after the proven SSH CLI path is wrapped in guided
+checks. VVC has already proven SSH for an experienced operator; the public task
+is making cluster SSH understandable for naive users through prompts, doctor
+status, and then a GUI that calls the same CLI capability.
+
+## Why These Choices Exist
+
+### Native CLIs stay native
+
+Claude, Codex, and Gemini keep their own login/config directories. The wrapper
+adds governance and telemetry, but it must not steal OAuth or force a proxy.
+
+### OpenCode is the routed client
+
+OpenCode is the default place to use LiteLLM, local models, OpenRouter/free
+routes, vLLM, and llama.cpp. Native CLIs can get explicit experimental proxy
+profiles later, but not as the default.
+
+### pnpm saves space
+
+pnpm uses a content-addressable store and hardlinks where the filesystem allows
+it. That can save significant disk space across multiple Node-based CLIs. The
+installer therefore asks where the pnpm home and store should live, then checks
+whether hardlinks are safe.
+
+### conda plus uv keeps Python sane
+
+conda is useful for heavyweight base environments. uv is useful for fast Python
+package and venv workflows. The installer asks for both cache/env roots so large
+Python assets do not land in surprise locations.
+
+### auditd is Linux cluster proof, not Windows proof
+
+In Linux cluster mode, the installer should install or verify auditd/execve
+capture. In standalone Linux or Windows, `llm-cli doctor` must honestly report
+wrapper/user-space provenance if auditd is not available.
+
+### reverse SSH is optional
+
+Windows can be installed locally. Remote install from a Linux controller is only
+used when normal SSH or reverse SSH is already proven. Otherwise the installer
+should produce a bundle/manual install path.
+
+### Skills are for agents, not users
+
+Users should not have to understand skills. Agents use `AGENTS.md` and `skills/`
+to follow context, provenance, benchmark, and handoff rules.
+
+## First Verification
+
+```bash
+llm-cli doctor
+llm-cli report
+claude --version
+codex --version
+gemini --version
+opencode --version
+```
+
+If LiteLLM is enabled:
+
+```bash
+opencode --model <model-from-doctor>
+```
+
+If PageIndex is enabled:
+
+```bash
+pageindex-init
+```
