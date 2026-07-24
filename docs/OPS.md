@@ -160,6 +160,7 @@ authoritative contract in portable files:
 | `CLAUDE.md` | redirect/adapt Claude Code to `AGENTS.md` |
 | `GEMINI.md` | redirect/adapt Gemini CLI to `AGENTS.md` |
 | `CODEX.md` | redirect/adapt Codex to `AGENTS.md` |
+| `INSTRUCTIONS.md` | generic redirect for tools that look for instruction files |
 | `skills/` | repo-native reusable operating briefs |
 | client skill dirs | optional mirrors/adapters only |
 

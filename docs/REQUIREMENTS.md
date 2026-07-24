@@ -124,6 +124,17 @@ user-scoped and must not assume a VVC drive layout.
 #### Python
 
 - `conda` + `uv` is the preferred Python tooling model
+- Windows users should install Miniconda/Miniforge for the current user and keep
+  a working base Python; `llm-cli` must not require manual conda activation for
+  wrapper hooks or config merges
+- `VIGYAN_PYTHON` is the explicit override for the Python binary used by hooks,
+  telemetry, JSON config merges, and installer helpers
+- Windows installers must validate Python candidates and reject the Microsoft
+  Store shim; `UV_PYTHON_INSTALL_DIR` and `UV_TOOL_DIR` are roots to search, not
+  necessarily executable paths themselves
+- Windows discovery should check PowerShell profile/env, PATH-derived
+  `condabin -> base`, `conda info --base`, and registry/uninstall metadata before
+  prompting for a Python path
 - rationale: reproducible heavy base envs plus fast package/venv workflows
 - prompts/flags must cover `CONDA_PKGS_DIRS`, `CONDA_ENVS_PATH`,
   `UV_CACHE_DIR`, and `PIP_CACHE_DIR`
@@ -246,7 +257,7 @@ usable for non-expert operators after the CLI path is stable.
 Agents need a small, portable instruction surface:
 
 - `AGENTS.md` is the model-agnostic source of truth
-- `CLAUDE.md`, `GEMINI.md`, and `CODEX.md` redirect to `AGENTS.md`
+- `CLAUDE.md`, `GEMINI.md`, `CODEX.md`, and `INSTRUCTIONS.md` redirect to `AGENTS.md`
 - repo-native `skills/<name>/SKILL.md` files hold reusable operating briefs
 - client-native skill folders may mirror/adapt those skills, but must not be the
   only place where governance exists

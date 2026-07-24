@@ -31,6 +31,7 @@ It exists to solve four practical problems:
 - [docs/OPS.md](docs/OPS.md) — operator behavior, rollout, verification
 - [docs/AUTONOMOUS_CONTEXT_PROOF_PLAN.md](docs/AUTONOMOUS_CONTEXT_PROOF_PLAN.md) — first proof loop for context efficiency and minimal autonomy
 - [AGENTS.md](AGENTS.md) — model-agnostic agent protocol
+- [INSTRUCTIONS.md](INSTRUCTIONS.md) — generic redirect to AGENTS.md
 - [skills/](skills/) — optional reusable agent briefs
 
 ## Intended Audience
@@ -50,6 +51,7 @@ The public contract should stay minimal and durable:
 - `docs/REQUIREMENTS.md`
 - `docs/OPS.md`
 - `AGENTS.md`
+- `INSTRUCTIONS.md`
 - `skills/`
 
 Everything else should derive from those documents rather than inventing policy
