@@ -26,6 +26,7 @@ It exists to solve four practical problems:
 
 ## Documents
 
+- [docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md) — consolidated product direction, locked decisions, free/paid split, and build order
 - [docs/INSTALLATION.md](docs/INSTALLATION.md) — simple install flow and justification
 - [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) — product and path contract
 - [docs/OPS.md](docs/OPS.md) — operator behavior, rollout, verification
