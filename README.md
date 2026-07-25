@@ -55,6 +55,7 @@ The public contract should stay minimal and durable:
 - `AGENTS.md`
 - `INSTRUCTIONS.md`
 - `skills/`
+- `work-units/session-state.md`
 - `work-units/session-state.json`
 - `work-units/session-decisions.json`
 - `work-units/session-state-archive.json`

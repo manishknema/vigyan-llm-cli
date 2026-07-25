@@ -4,6 +4,9 @@
 that Claude, Codex, Gemini, OpenCode, or any future CLI can reconstruct current
 state from repo files and PageIndex instead of depending on chat history.
 
+`work-units/session-state.md` is the human-readable explanation. The JSON files
+are the machine-readable state.
+
 ## Why This Exists
 
 Long AI projects fail when decisions are scattered across conversations. This
@@ -33,6 +36,20 @@ Use it for:
 - active decision IDs
 
 Do not put long product plans, raw logs, or historical ledgers here.
+
+### `work-units/session-state.md`
+
+Human-readable explanation of the state system.
+
+Use it to understand:
+
+- why session state exists
+- how agents should query it
+- how autonomous runs use it
+- what belongs in JSON versus docs
+
+Do not treat it as the active state. The active state is
+`work-units/session-state.json`.
 
 ### `work-units/session-decisions.json`
 

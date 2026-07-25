@@ -50,6 +50,8 @@ hard to understand.
   `work-units/session-decisions.json`, and
   `work-units/session-state-archive.json`; follow
   `docs/SESSION_STATE_GOVERNANCE.md`.
+- `work-units/session-state.md` explains why the state files exist and how
+  agents/autonomous runs should use them; it is not the active state itself.
 
 ## Autonomous Runs
 
