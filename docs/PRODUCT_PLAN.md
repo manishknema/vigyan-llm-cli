@@ -176,6 +176,19 @@ must not copy private VVC hostnames, paths, secrets layout, or raw logs.
 Do not benchmark FalkorDB as a token-saving lane. FalkorDB is for structural
 correctness/blast-radius questions.
 
+The proof must keep fields for later local-AI expansion:
+
+- OpenCode as the managed LiteLLM/local/free-route client
+- backend label: cloud, LiteLLM, OpenRouter, llama.cpp, or vLLM
+- model label
+- retrieval mode
+- input filter mode: `off`, then RTK/Headroom-style filtering
+- output style: `normal`, then Caveman-style terse mode
+- harness failure markers such as edit leaks or malformed tool calls
+
+The public repo should not copy private VVC runtime logs. It should preserve the
+schema and proof contract so VVC results can be compared safely.
+
 ### Phase 2 — minimal autonomous runner
 
 Implement:
@@ -236,6 +249,9 @@ Add later:
 - CPU-friendly text-to-query benchmark
 - RTK/Headroom-style input filtering
 - Caveman-style output mode
+- OpenCode local/free-route benchmark expansion
+- llama.cpp versus vLLM backend comparison
+- weak/local-model harness repair
 - on-box guardrails
 - named policies
 - tamper-evident provenance
