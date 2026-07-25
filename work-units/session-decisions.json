@@ -52,6 +52,16 @@
       "active": true,
       "canonical_doc": "docs/PRODUCT_PLAN.md",
       "summary": "PWA/dashboard is free/core; Android/Web Push is optional and doctor-gated, with OIDC only for shared/team-scoped push."
+    },
+    {
+      "id": "LLMCLI-VVC-FIRST-001",
+      "domain": "vigyan-llm-cli",
+      "topic": "runtime-proof-order",
+      "date": "2026-07-25",
+      "status": "locked",
+      "active": true,
+      "canonical_doc": "docs/PRODUCT_PLAN.md",
+      "summary": "First prove the autonomous llm-cli run layer inside VVC using the focused llm-cli lane state, while building/distilling the public repo in parallel."
     }
   ]
 }

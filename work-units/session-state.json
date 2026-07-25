@@ -9,7 +9,8 @@
     "decisions": "work-units/session-decisions.json",
     "archive": "work-units/session-state-archive.json",
     "governance": "docs/SESSION_STATE_GOVERNANCE.md",
-    "product_plan": "docs/PRODUCT_PLAN.md"
+    "product_plan": "docs/PRODUCT_PLAN.md",
+    "upstream_vvc_lane": "/home/manish/projects/Vigyan-Virtual-Cloud/work-units/session-state-llm-cli.json"
   },
   "current_decisions": [
     "LLMCLI-PRODUCT-001",
@@ -50,6 +51,14 @@
       "status": "active",
       "summary": "Agents must query PageIndex for active state and decisions before planning or launching autonomous runs.",
       "canonical_doc": "docs/SESSION_STATE_GOVERNANCE.md"
+    },
+    {
+      "id": "NOTE-VVC-FIRST-001",
+      "domain": "vigyan-llm-cli",
+      "status": "active",
+      "summary": "The first runtime proof is in VVC using its focused llm-cli lane state; public repo receives distilled product-safe decisions and will be built in parallel.",
+      "canonical_doc": "docs/PRODUCT_PLAN.md",
+      "source_ref": "/home/manish/projects/Vigyan-Virtual-Cloud/work-units/session-state-llm-cli.json"
     }
   ]
 }

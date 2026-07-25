@@ -144,6 +144,17 @@ Paid/advanced:
 
 ## Build Order
 
+The first runtime proof happens in VVC because the real llm-cli wrappers,
+PageIndex wiring, OpenCode/LiteLLM route, telemetry, Windows/Linux lessons, and
+decision history live there. To avoid VVC noise, VVC keeps a focused lane file:
+
+```text
+/home/manish/projects/Vigyan-Virtual-Cloud/work-units/session-state-llm-cli.json
+```
+
+The public repo is built in parallel from distilled product-safe decisions. It
+must not copy private VVC hostnames, paths, secrets layout, or raw logs.
+
 ### Phase 0 — stabilize llm-cli
 
 - Linux wrappers verified.
