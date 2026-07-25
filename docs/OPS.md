@@ -196,6 +196,39 @@ Runtime update prompts from vendor CLIs are not authoritative. They may inform
 the operator that a newer version exists, but the governed action remains
 `llm-cli upgrade`.
 
+## Product Surface Decisions
+
+### Deterministic NL query
+
+Natural-language telemetry query is part of the product, but the first version
+must be deterministic rather than AI-dependent. The supported shape is guided
+plain English over known telemetry fields:
+
+- dictionary: host/node/machine -> host field, CLI/agent -> CLI field, tokens
+  and cache phrases -> token/cache columns
+- grammar/templates for common questions
+- date phrase parsing
+- DuckDB over parquet
+- clarification when a phrase maps to multiple fields
+
+This is the free/core proof path because it can show PageIndex and compression
+gain without using AI to interpret the evidence. AI NL-to-query, query repair,
+explanations, and recommendations are enhancement layers.
+
+### PWA and Android push
+
+The PWA/dashboard should be part of the free/core surface so users can see value
+immediately. Android/Web Push is useful but must be doctor-gated:
+
+- verify service worker support
+- verify HTTPS or localhost context
+- verify VAPID/server configuration
+- request and test notification permission
+- report browser/device power-policy limitations when observable
+
+OIDC is not required for a local single-user notification test. It becomes
+necessary when push is tied to user identity, teams, or remote/shared servers.
+
 ## Install Modes
 
 Path selection is part of the install contract. The installer should run in

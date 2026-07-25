@@ -262,7 +262,57 @@ usable for non-expert operators after the CLI path is stable.
 - HITL is for ambiguity or hard gates; agents should proceed when the answer can
   be reconstructed from durable state, docs, PageIndex, or bounded runtime probes
 
-### 7a. Agent onboarding requirements
+### 7a. Telemetry query requirements
+
+Plain-English telemetry query must be useful without making AI mandatory.
+
+The free/core query path is deterministic and bounded:
+
+- schema dictionary maps user terms to columns and enums
+- grammar/templates support common operator questions
+- date phrase parsing handles ranges such as today, yesterday, and last week
+- DuckDB queries parquet telemetry directly
+- ambiguous phrases trigger a clarification instead of silent guessing
+- saved query templates cover common workflows
+
+Examples the deterministic path should support:
+
+- show failed Codex runs today
+- compare raw vs PageIndex token usage last week
+- top commands by cost
+- show OpenCode runs using local models
+
+AI-assisted query translation, query repair, explanations, cross-run
+recommendations, and context-saving advice are advanced features. They must not
+be required to prove raw vs PageIndex gain.
+
+### 7b. PWA and push requirements
+
+The PWA/dashboard belongs in the free/core attraction surface:
+
+- local install and doctor status
+- run/telemetry view
+- deterministic guided query templates
+- raw vs PageIndex comparison
+- optional push health check and test notification
+
+Android/Web Push is optional capability, not a guaranteed baseline. The product
+must detect and report whether the current browser/device can support it.
+
+Push constraints:
+
+- requires service-worker support
+- requires HTTPS or localhost
+- requires VAPID/server support for Web Push
+- requires user notification permission
+- may be affected by browser and device power policy
+- OIDC is not required for local single-user push
+- OIDC or equivalent identity is required for team/user-scoped remote push
+
+Paid/advanced push features may include notification rules, mobile escalation,
+team/OIDC identity, retention controls, and AI-generated summaries.
+
+### 7c. Agent onboarding requirements
 
 Agents need a small, portable instruction surface:
 
