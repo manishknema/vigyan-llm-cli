@@ -292,11 +292,18 @@ Local model fallback requirements:
   the user enables local AI
 - llama.cpp/GGUF models are preferred for the small-footprint path
 - the first benchmark candidates are:
+  - `prem-research/prem-1B-SQL`
+  - `mradermacher/prem-1B-SQL-GGUF`
   - `motherduckdb/DuckDB-NSQL-7B-v0.1-GGUF`
+  - `QuantFactory/DuckDB-NSQL-7B-v0.1-GGUF`
   - `QuantFactory/sqlcoder-7b-2-GGUF`
+  - `MaziyarPanahi/sqlcoder-7b-2-GGUF`
   - `support-pvelocity/Llama-2-7B-instruct-text2sql-GGUF`
   - `defog/sqlcoder` as a heavier reference lane
   - `cssupport/t5-small-awesome-text-to-sql` as a tiny CPU baseline
+- model repository pages must be endpoint-checked before pinning or download;
+  if Hugging Face returns 404, verify exact case-sensitive ID, login/network
+  filtering, and file URL vs repository URL
 - models produce structured intent or read-only SQL only
 - no generated query may run without allowlist validation and DuckDB preflight
 - invalid/ambiguous output must trigger clarification, not silent execution

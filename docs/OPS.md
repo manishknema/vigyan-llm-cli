@@ -225,11 +225,20 @@ Initial candidates to benchmark:
 
 | Candidate | Footprint | Why |
 |---|---:|---|
-| `motherduckdb/DuckDB-NSQL-7B-v0.1-GGUF` | 7B GGUF | DuckDB/parquet-aligned first candidate. |
+| `prem-research/prem-1B-SQL` | 1B | CPU-first local Text-to-SQL candidate. |
+| `mradermacher/prem-1B-SQL-GGUF` | 1B GGUF | llama.cpp-friendly Prem-1B lane. |
+| `motherduckdb/DuckDB-NSQL-7B-v0.1-GGUF` | 7B GGUF | DuckDB/parquet-aligned upstream GGUF candidate. |
+| `QuantFactory/DuckDB-NSQL-7B-v0.1-GGUF` | 7B GGUF | Quantized DuckDB-NSQL Q4 lane. |
 | `QuantFactory/sqlcoder-7b-2-GGUF` | 7B GGUF | Analytics SQLCoder GGUF lane. |
+| `MaziyarPanahi/sqlcoder-7b-2-GGUF` | 7B GGUF | Alternate SQLCoder GGUF mirror. |
 | `support-pvelocity/Llama-2-7B-instruct-text2sql-GGUF` | 7B GGUF | llama.cpp text-to-SQL baseline. |
 | `defog/sqlcoder` | 15B | Stronger reference, not small CPU default. |
 | `cssupport/t5-small-awesome-text-to-sql` | small | Very light CPU baseline, outside GGUF-first path. |
+
+These Hugging Face model pages were endpoint-checked from VVC on 2026-07-25 and
+returned HTTP 200. If a user sees 404, check exact case-sensitive repo ID,
+Hugging Face login/network filtering, and whether the failing URL points to a
+missing model file rather than the model repository.
 
 Guardrails:
 
