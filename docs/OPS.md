@@ -215,6 +215,34 @@ This is the free/core proof path because it can show PageIndex and compression
 gain without using AI to interpret the evidence. AI NL-to-query, query repair,
 explanations, and recommendations are enhancement layers.
 
+### Local text-to-query candidates
+
+When deterministic parsing cannot resolve a question, the next fallback should
+prefer local CPU-friendly models before cloud AI. These models are convenience
+parsers, not trusted executors.
+
+Initial candidates to benchmark:
+
+| Candidate | Footprint | Why |
+|---|---:|---|
+| `motherduckdb/DuckDB-NSQL-7B-v0.1-GGUF` | 7B GGUF | DuckDB/parquet-aligned first candidate. |
+| `QuantFactory/sqlcoder-7b-2-GGUF` | 7B GGUF | Analytics SQLCoder GGUF lane. |
+| `support-pvelocity/Llama-2-7B-instruct-text2sql-GGUF` | 7B GGUF | llama.cpp text-to-SQL baseline. |
+| `defog/sqlcoder` | 15B | Stronger reference, not small CPU default. |
+| `cssupport/t5-small-awesome-text-to-sql` | small | Very light CPU baseline, outside GGUF-first path. |
+
+Guardrails:
+
+- deterministic parser runs first
+- model output must be structured intent or `SELECT`-only SQL
+- schema, tables, columns, operations, and row limits are allowlisted
+- DuckDB preflight runs before execution
+- invalid output falls back to clarification
+
+SigNoz-style observability UX is the reference bar: guided filters, query
+builder behavior, saved views, dashboards, and drilldowns matter as much as NL
+translation.
+
 ### PWA and Android push
 
 The PWA/dashboard should be part of the free/core surface so users can see value

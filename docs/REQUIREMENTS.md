@@ -286,6 +286,25 @@ AI-assisted query translation, query repair, explanations, cross-run
 recommendations, and context-saving advice are advanced features. They must not
 be required to prove raw vs PageIndex gain.
 
+Local model fallback requirements:
+
+- CPU-friendly local inference must be attempted before any cloud fallback when
+  the user enables local AI
+- llama.cpp/GGUF models are preferred for the small-footprint path
+- the first benchmark candidates are:
+  - `motherduckdb/DuckDB-NSQL-7B-v0.1-GGUF`
+  - `QuantFactory/sqlcoder-7b-2-GGUF`
+  - `support-pvelocity/Llama-2-7B-instruct-text2sql-GGUF`
+  - `defog/sqlcoder` as a heavier reference lane
+  - `cssupport/t5-small-awesome-text-to-sql` as a tiny CPU baseline
+- models produce structured intent or read-only SQL only
+- no generated query may run without allowlist validation and DuckDB preflight
+- invalid/ambiguous output must trigger clarification, not silent execution
+
+Observability query UX should learn from SigNoz-style guided filters,
+dashboards, saved views, and drilldowns. NL-to-query is one input method, not a
+replacement for good observability UI.
+
 ### 7b. PWA and push requirements
 
 The PWA/dashboard belongs in the free/core attraction surface:
