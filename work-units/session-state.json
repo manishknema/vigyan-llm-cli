@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-07-25",
+  "domain": "vigyan-llm-cli",
+  "status": "active",
+  "active_focus": "Build the minimal llm-cli run layer from durable PageIndex/session-state context.",
+  "source_of_truth": {
+    "active": "work-units/session-state.json",
+    "decisions": "work-units/session-decisions.json",
+    "archive": "work-units/session-state-archive.json",
+    "governance": "docs/SESSION_STATE_GOVERNANCE.md",
+    "product_plan": "docs/PRODUCT_PLAN.md"
+  },
+  "current_decisions": [
+    "LLMCLI-PRODUCT-001",
+    "LLMCLI-INSTALL-001",
+    "LLMCLI-AUTONOMY-001",
+    "LLMCLI-QUERY-001",
+    "LLMCLI-PWA-001"
+  ],
+  "blockers": [
+    {
+      "id": "BLOCK-RUN-001",
+      "domain": "vigyan-llm-cli",
+      "status": "pending",
+      "summary": "The documented llm-cli run command surface is not implemented yet.",
+      "canonical_doc": "docs/PRODUCT_PLAN.md"
+    }
+  ],
+  "next_actions": [
+    {
+      "id": "NEXT-RUN-001",
+      "domain": "vigyan-llm-cli",
+      "status": "pending",
+      "summary": "Implement llm-cli run new/start/status/trace/cleanup over the existing autonomous-session concept.",
+      "canonical_doc": "docs/PRODUCT_PLAN.md"
+    },
+    {
+      "id": "NEXT-RUN-002",
+      "domain": "vigyan-llm-cli",
+      "status": "pending",
+      "summary": "Generate run-envelope.json, role seed prompts, trace.jsonl, receipt.md, and optional builder worktree from PageIndex/session-state context.",
+      "canonical_doc": "docs/AUTONOMOUS_CONTEXT_PROOF_PLAN.md"
+    }
+  ],
+  "notes": [
+    {
+      "id": "NOTE-STATE-001",
+      "domain": "vigyan-llm-cli",
+      "status": "active",
+      "summary": "Agents must query PageIndex for active state and decisions before planning or launching autonomous runs.",
+      "canonical_doc": "docs/SESSION_STATE_GOVERNANCE.md"
+    }
+  ]
+}

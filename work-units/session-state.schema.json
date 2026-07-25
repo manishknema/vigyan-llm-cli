@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vigyan.local/schemas/session-state.schema.json",
+  "title": "vigyan-llm-cli session state",
+  "type": "object",
+  "required": ["version", "updated_at", "domain", "source_of_truth"],
+  "properties": {
+    "version": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "domain": { "type": "string" },
+    "status": { "type": "string" },
+    "active_focus": { "type": "string" },
+    "source_of_truth": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "current_decisions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/item" }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/item" }
+    },
+    "notes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/item" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": ["id", "status", "summary"],
+      "properties": {
+        "id": { "type": "string" },
+        "domain": { "type": "string" },
+        "status": { "type": "string" },
+        "summary": { "type": "string" },
+        "canonical_doc": { "type": "string" },
+        "source_ref": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -27,6 +27,7 @@ It exists to solve four practical problems:
 ## Documents
 
 - [docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md) — consolidated product direction, locked decisions, free/paid split, and build order
+- [docs/SESSION_STATE_GOVERNANCE.md](docs/SESSION_STATE_GOVERNANCE.md) — cross-CLI durable memory contract using session-state, decisions, archive, and PageIndex
 - [docs/INSTALLATION.md](docs/INSTALLATION.md) — simple install flow and justification
 - [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) — product and path contract
 - [docs/OPS.md](docs/OPS.md) — operator behavior, rollout, verification
@@ -54,6 +55,9 @@ The public contract should stay minimal and durable:
 - `AGENTS.md`
 - `INSTRUCTIONS.md`
 - `skills/`
+- `work-units/session-state.json`
+- `work-units/session-decisions.json`
+- `work-units/session-state-archive.json`
 
 Everything else should derive from those documents rather than inventing policy
 in a fourth place.

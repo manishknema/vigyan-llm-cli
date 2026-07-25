@@ -1,0 +1,57 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-07-25",
+  "domain": "vigyan-llm-cli",
+  "decisions": [
+    {
+      "id": "LLMCLI-PRODUCT-001",
+      "domain": "vigyan-llm-cli",
+      "topic": "product-thesis",
+      "date": "2026-07-25",
+      "status": "locked",
+      "active": true,
+      "canonical_doc": "docs/PRODUCT_PLAN.md",
+      "summary": "Build a local-first governed execution and telemetry layer for AI coding CLIs, not a generic gateway or full AgentOS."
+    },
+    {
+      "id": "LLMCLI-INSTALL-001",
+      "domain": "vigyan-llm-cli",
+      "topic": "install-contract",
+      "date": "2026-07-25",
+      "status": "locked",
+      "active": true,
+      "canonical_doc": "docs/REQUIREMENTS.md",
+      "summary": "Use one installer contract with OS-specific adapters; standalone is user-scoped, cluster is Linux-only, Windows is Git-Bash-first."
+    },
+    {
+      "id": "LLMCLI-AUTONOMY-001",
+      "domain": "vigyan-llm-cli",
+      "topic": "autonomous-runner",
+      "date": "2026-07-25",
+      "status": "locked",
+      "active": true,
+      "canonical_doc": "docs/PRODUCT_PLAN.md",
+      "summary": "Use Paperclip-style primitives: roles, budgets, seed prompts, HITL gates, receipts, and worktrees. Do not build full AgentOS first."
+    },
+    {
+      "id": "LLMCLI-QUERY-001",
+      "domain": "vigyan-llm-cli",
+      "topic": "telemetry-query",
+      "date": "2026-07-25",
+      "status": "locked",
+      "active": true,
+      "canonical_doc": "docs/PRODUCT_PLAN.md",
+      "summary": "Deterministic guided NL query over parquet is free/core; AI or local model NL-to-query is optional and guarded."
+    },
+    {
+      "id": "LLMCLI-PWA-001",
+      "domain": "vigyan-llm-cli",
+      "topic": "pwa-push",
+      "date": "2026-07-25",
+      "status": "locked",
+      "active": true,
+      "canonical_doc": "docs/PRODUCT_PLAN.md",
+      "summary": "PWA/dashboard is free/core; Android/Web Push is optional and doctor-gated, with OIDC only for shared/team-scoped push."
+    }
+  ]
+}

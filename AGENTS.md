@@ -19,8 +19,20 @@ hard to understand.
 
 1. Read `docs/REQUIREMENTS.md`.
 2. Read `docs/OPS.md`.
-3. For autonomous/context work, read `docs/AUTONOMOUS_CONTEXT_PROOF_PLAN.md`.
-4. Use `skills/` only as reusable operating briefs.
+3. Query PageIndex for active state before planning:
+
+   ```text
+   query_context(query='active task session state pending', navigation_only=true, domain='vigyan-llm-cli')
+   ```
+
+4. Query decision state when the task depends on prior choices:
+
+   ```text
+   query_context(query='<task terms> decision locked rationale', navigation_only=true, domain='vigyan-llm-cli', path_prefix='work-units/')
+   ```
+
+5. For autonomous/context work, read `docs/AUTONOMOUS_CONTEXT_PROOF_PLAN.md`.
+6. Use `skills/` only as reusable operating briefs.
 
 ## Non-Negotiables
 
@@ -34,6 +46,10 @@ hard to understand.
   schedulers.
 - Stop for HITL on secrets, destructive changes, production deploys, auth-path
   changes, upgrade-authority changes, or ambiguous role/worktree scope.
+- Keep durable state in `work-units/session-state.json`,
+  `work-units/session-decisions.json`, and
+  `work-units/session-state-archive.json`; follow
+  `docs/SESSION_STATE_GOVERNANCE.md`.
 
 ## Autonomous Runs
 
