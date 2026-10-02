@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "nodes": [
+    { "name": "node-a", "ssh": "local", "user": "example", "os": "linux", "role": "dev" },
+    { "name": "node-b", "ssh": "example@node-b.local", "user": "example", "os": "windows-git-bash", "role": "dev", "clis": ["claude", "codex"] },
+    { "name": "node-c", "ssh": "node-c", "user": "example", "os": "linux", "role": "server" }
+  ]
+}

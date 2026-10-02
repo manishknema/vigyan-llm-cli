@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/manishknema/vigyan-llm-cli/schema/nodes.schema.json",
+  "title": "llm-cli node inventory",
+  "description": "Private per-operator inventory read by `llm-cli nodes` and `llm-cli push`. Lives at ~/.config/vigyan/nodes.json (mode 600) and is never committed. It names SSH targets only: keys and secrets stay in the operator's existing SSH setup and are never copied.",
+  "type": "object",
+  "required": ["version", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "ssh", "os", "role"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "description": "Node name; matched against the short hostname to find this node's own entry.", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "ssh": { "type": "string", "description": "SSH target as you would type it (alias from ~/.ssh/config, host, or user@host). `local` means this machine." },
+          "user": { "type": "string", "description": "Login user on the node (informational; the SSH target decides)." },
+          "os": { "enum": ["linux", "windows-git-bash"], "description": "windows-git-bash: commands are run through Git Bash (the Windows OpenSSH server starts cmd.exe)." },
+          "role": { "enum": ["dev", "server"], "description": "dev: agent CLIs, front doors, interop, shared memory, MOTD with CLI versions. server: no agent CLIs; telemetry and model services, MOTD with service health." },
+          "clis": { "type": "array", "items": { "enum": ["claude", "codex", "opencode", "agy"] }, "uniqueItems": true, "description": "Optional: limit the agent CLIs a dev node manages. Omit for the role default." },
+          "bash": { "type": "string", "description": "windows-git-bash only: path to Git Bash's bash.exe when not in the default location." }
+        }
+      }
+    }
+  }
+}
