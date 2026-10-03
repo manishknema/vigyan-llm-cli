@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/manishknema/vigyan-llm-cli/schema/registry.schema.json",
+  "title": "llm-cli registry (v3)",
+  "description": "One file for MCP servers, global skills, the feature catalog `llm-cli setup` offers, and every environment variable those servers need with the sources llm-cli tries to fill it from. Secret VALUES never appear here: they live only in the SOPS+age vault.",
+  "type": "object",
+  "required": ["version", "mcp"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 2 },
+    "imports": { "type": "array", "items": { "type": "string" }, "description": "Other MCP bundles merged in; this file wins on a name or endpoint clash." },
+    "mcp": {
+      "type": "object",
+      "required": ["servers"],
+      "properties": {
+        "default_profiles": { "type": "array", "items": { "type": "string" } },
+        "profiles": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } },
+        "node_profiles": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } }, "description": "Extra profiles per node name." },
+        "aliases": { "type": "object", "additionalProperties": { "type": "string" }, "description": "old name -> new name; the old name is removed from every CLI." },
+        "servers": { "type": "object", "additionalProperties": { "$ref": "#/$defs/server" } }
+      }
+    },
+    "skills": {
+      "type": "object",
+      "properties": {
+        "source_dir": { "type": "string" },
+        "exclude": { "type": "array", "items": { "type": "string" } },
+        "items": { "type": "object", "additionalProperties": { "type": "object", "required": ["path"], "properties": { "path": { "type": "string" }, "description": { "type": "string" } } } }
+      }
+    },
+    "env": {
+      "type": "object",
+      "description": "Every variable a server needs. Names starting with $ are comments.",
+      "additionalProperties": { "$ref": "#/$defs/envvar" }
+    },
+    "features": {
+      "type": "object",
+      "properties": {
+        "fleet_defaults": { "type": "array", "items": { "type": "string" }, "description": "Preselected feature ids for this operator's fleet." },
+        "catalog": { "type": "array", "items": { "$ref": "#/$defs/feature" } }
+      }
+    },
+    "fleet": {
+      "type": "object",
+      "properties": {
+        "controller": { "type": "string", "description": "Node that holds the registry master and the vault." },
+        "hub_ssh": { "type": "array", "items": { "type": "string" }, "description": "SSH targets other nodes use to pull from the controller." },
+        "vault": { "type": "string", "default": "secrets/fleet.sops.env" },
+        "vault_meta": { "type": "string", "default": "secrets/fleet.meta.json" }
+      }
+    }
+  },
+  "$defs": {
+    "server": {
+      "type": "object",
+      "required": ["transport"],
+      "properties": {
+        "description": { "type": "string" },
+        "transport": { "enum": ["http", "stdio"] },
+        "url": { "type": "string", "description": "May contain ${ENV_VAR} references." },
+        "command": { "type": "string" },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "env": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^\\$\\{[A-Z0-9_]+\\}$" } },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "auth": { "type": "object", "properties": { "type": { "enum": ["none", "oauth", "bearer", "env"] }, "env": {} } },
+        "reach": { "enum": ["anywhere", "lan", "local"] },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["generate", "config", "cmd", "sops", "file", "env", "random", "ask"], "description": "generate: per-node template ({node}); config: fixed non-secret value; cmd: stdout of argv (optionally on `host` over ssh); sops: --extract `key` from an existing SOPS file; file: KEY from a dotenv file; env: an environment variable; random: new random hex; ask: prompt once (hidden for secrets), never in non-interactive runs." },
+        "template": { "type": "string" },
+        "value": { "type": "string" },
+        "argv": { "type": "array", "items": { "type": "string" } },
+        "host": { "type": "string" },
+        "file": { "type": "string" },
+        "path": { "type": "string" },
+        "key": { "type": "string" },
+        "name": { "type": "string" },
+        "bytes": { "type": "integer" }
+      }
+    },
+    "envvar": {
+      "type": "object",
+      "required": ["sources"],
+      "properties": {
+        "secret": { "type": "boolean", "default": false },
+        "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+        "guide": {
+          "type": "object",
+          "description": "Shown when the value has to be asked for, and in docs/FEATURES.md.",
+          "properties": {
+            "what": { "type": "string" }, "where": { "type": "string", "description": "Exact menu path." },
+            "scopes": { "type": "string", "description": "Minimum scopes/permissions." }, "docs": { "type": "string" },
+            "cost": { "type": "string" }, "verify": { "type": "string", "description": "How to check it worked." }
+          }
+        }
+      }
+    },
+    "feature": {
+      "type": "object",
+      "required": ["id", "group", "title", "gives"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "group": { "type": "string" }, "title": { "type": "string" },
+        "gives": { "type": "string", "description": "One line: what you get." },
+        "servers": { "type": "array", "items": { "type": "string" } },
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "clis": { "type": "array", "items": { "type": "string" } },
+        "services": { "type": "array", "items": { "type": "string" } },
+        "env": { "type": "array", "items": { "type": "string" } },
+        "default": { "type": "boolean" }
+      }
+    }
+  }
+}

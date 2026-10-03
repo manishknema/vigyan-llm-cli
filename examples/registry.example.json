@@ -1,0 +1,467 @@
+{
+  "$comment": "Example llm-cli registry. Copy to ~/.config/vigyan/registry.json (or point ~/.config/vigyan/llm-cli.json registry_master at it), adjust the config values, then run `llm-cli setup`. Never put secret values here: secrets live only in the SOPS+age vault.",
+  "version": 3,
+  "imports": [],
+  "mcp": {
+    "default_profiles": [
+      "default"
+    ],
+    "profiles": {
+      "default": [
+        "github",
+        "cloudflare-docs",
+        "searxng"
+      ]
+    },
+    "node_profiles": {},
+    "aliases": {},
+    "servers": {
+      "github": {
+        "description": "GitHub repos, issues, PRs, Actions.",
+        "transport": "http",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "auth": {
+          "type": "bearer",
+          "env": "GITHUB_PERSONAL_ACCESS_TOKEN"
+        },
+        "reach": "anywhere"
+      },
+      "cloudflare-api": {
+        "description": "Cloudflare account/zone API.",
+        "transport": "http",
+        "url": "https://mcp.cloudflare.com/mcp",
+        "auth": {
+          "type": "oauth"
+        },
+        "reach": "anywhere"
+      },
+      "cloudflare-docs": {
+        "description": "Cloudflare documentation search.",
+        "transport": "http",
+        "url": "https://docs.mcp.cloudflare.com/mcp",
+        "auth": {
+          "type": "none"
+        },
+        "reach": "anywhere"
+      },
+      "notion": {
+        "description": "Notion workspace.",
+        "transport": "http",
+        "url": "https://mcp.notion.com/mcp",
+        "auth": {
+          "type": "oauth"
+        },
+        "reach": "anywhere"
+      },
+      "vercel": {
+        "description": "Vercel projects, deployments, logs.",
+        "transport": "http",
+        "url": "https://mcp.vercel.com",
+        "auth": {
+          "type": "oauth"
+        },
+        "reach": "anywhere"
+      },
+      "supabase": {
+        "description": "Supabase cloud projects, SQL, logs.",
+        "transport": "http",
+        "url": "https://mcp.supabase.com/mcp",
+        "auth": {
+          "type": "oauth"
+        },
+        "reach": "anywhere"
+      },
+      "coolify": {
+        "description": "Coolify v4: apps, deployments, logs, env vars.",
+        "transport": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@masonator/coolify-mcp"
+        ],
+        "env": {
+          "COOLIFY_BASE_URL": "${COOLIFY_BASE_URL}",
+          "COOLIFY_ACCESS_TOKEN": "${COOLIFY_ACCESS_TOKEN}"
+        },
+        "reach": "anywhere"
+      },
+      "site": {
+        "description": "Your site's own MCP endpoint.",
+        "transport": "http",
+        "url": "${SITE_URL}/api/mcp",
+        "auth": {
+          "type": "bearer",
+          "env": "SITE_MCP_KEY"
+        },
+        "headers": {
+          "X-Caller-Label": "${MCP_CALLER_LABEL}"
+        },
+        "reach": "anywhere"
+      },
+      "postiz": {
+        "description": "Postiz social scheduler.",
+        "transport": "http",
+        "url": "${POSTIZ_BACKEND_URL}/mcp/${POSTIZ_API_KEY}",
+        "reach": "anywhere"
+      },
+      "n8n": {
+        "description": "n8n workflows exposed to MCP.",
+        "transport": "http",
+        "url": "${N8N_URL}/mcp-server/http",
+        "auth": {
+          "type": "bearer",
+          "env": "N8N_MCP_TOKEN"
+        },
+        "reach": "anywhere"
+      },
+      "searxng": {
+        "description": "Web search through your SearXNG.",
+        "transport": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "mcp-searxng"
+        ],
+        "env": {
+          "SEARXNG_URL": "${SEARXNG_URL}"
+        },
+        "reach": "lan"
+      }
+    }
+  },
+  "env": {
+    "MCP_CALLER_LABEL": {
+      "secret": false,
+      "sources": [
+        {
+          "type": "generate",
+          "template": "llm-cli@{node}"
+        }
+      ],
+      "guide": {
+        "what": "Caller label sent to your site's MCP (audit log); CLI wrappers override it as <agent>@<node>."
+      }
+    },
+    "GITHUB_PERSONAL_ACCESS_TOKEN": {
+      "secret": true,
+      "sources": [
+        {
+          "type": "cmd",
+          "argv": [
+            "gh",
+            "auth",
+            "token"
+          ]
+        },
+        {
+          "type": "ask"
+        }
+      ],
+      "guide": {
+        "where": "GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token. Or run `gh auth login` once and llm-cli reads it.",
+        "scopes": "only the repos agents work on: Contents, Pull requests, Issues (read/write), Actions (read)",
+        "docs": "https://github.com/github/github-mcp-server",
+        "cost": "free",
+        "verify": "claude mcp list shows github ✔ Connected"
+      }
+    },
+    "SITE_URL": {
+      "secret": false,
+      "sources": [
+        {
+          "type": "ask"
+        }
+      ],
+      "guide": {
+        "what": "Your site's base URL, e.g. https://www.example.com"
+      }
+    },
+    "SITE_MCP_KEY": {
+      "secret": true,
+      "sources": [
+        {
+          "type": "env",
+          "name": "SITE_MCP_KEY"
+        },
+        {
+          "type": "ask"
+        }
+      ],
+      "guide": {
+        "where": "Your site's MCP_SECRET_KEY (its env vars / secret store)",
+        "docs": "https://github.com/aryannema/vigyan-site-os/blob/main/docs/AGENT_MCP.md",
+        "cost": "free",
+        "verify": "claude mcp list shows site ✔ Connected"
+      }
+    },
+    "COOLIFY_BASE_URL": {
+      "secret": false,
+      "sources": [
+        {
+          "type": "ask"
+        }
+      ],
+      "guide": {
+        "what": "Coolify dashboard URL, e.g. https://coolify.example.com",
+        "verify": "curl $COOLIFY_BASE_URL/api/health"
+      }
+    },
+    "COOLIFY_ACCESS_TOKEN": {
+      "secret": true,
+      "sources": [
+        {
+          "type": "ask"
+        }
+      ],
+      "guide": {
+        "where": "Coolify → Keys & Tokens → API tokens → Create (shown once; Coolify keeps only a hash)",
+        "scopes": "read for status/logs; write to deploy",
+        "docs": "https://coolify.io/docs/api-reference/authorization",
+        "cost": "free (self-hosted)",
+        "verify": "claude mcp list shows coolify ✔ Connected"
+      }
+    },
+    "POSTIZ_BACKEND_URL": {
+      "secret": false,
+      "sources": [
+        {
+          "type": "ask"
+        }
+      ],
+      "guide": {
+        "what": "Postiz backend URL, e.g. https://postiz.example.com/api"
+      }
+    },
+    "POSTIZ_API_KEY": {
+      "secret": true,
+      "sources": [
+        {
+          "type": "ask"
+        }
+      ],
+      "guide": {
+        "where": "Postiz → Settings → Public API → API key",
+        "docs": "https://docs.postiz.com/public-api",
+        "cost": "free (self-hosted) or Postiz cloud plan",
+        "verify": "claude mcp list shows postiz ✔ Connected"
+      }
+    },
+    "N8N_URL": {
+      "secret": false,
+      "sources": [
+        {
+          "type": "ask"
+        }
+      ],
+      "guide": {
+        "what": "n8n base URL, e.g. https://n8n.example.com"
+      }
+    },
+    "N8N_MCP_TOKEN": {
+      "secret": true,
+      "sources": [
+        {
+          "type": "ask"
+        }
+      ],
+      "guide": {
+        "where": "n8n → Settings → Instance-level MCP → Enable → Access token",
+        "docs": "https://docs.n8n.io/advanced-ai/accessing-n8n-mcp-server/",
+        "cost": "free (self-hosted)",
+        "verify": "claude mcp list shows n8n ✔ Connected"
+      }
+    },
+    "SEARXNG_URL": {
+      "secret": false,
+      "sources": [
+        {
+          "type": "config",
+          "value": "http://localhost:8080"
+        }
+      ],
+      "guide": {
+        "what": "SearXNG base URL with JSON output enabled",
+        "verify": "curl \"$SEARXNG_URL/search?q=test&format=json\""
+      }
+    }
+  },
+  "features": {
+    "catalog": [
+      {
+        "id": "agents",
+        "group": "Agents",
+        "title": "Coding agent CLIs",
+        "gives": "Claude Code, Codex, OpenCode and Antigravity installed, wrapped and kept up to date",
+        "clis": [
+          "claude",
+          "codex",
+          "opencode",
+          "agy"
+        ],
+        "default": true
+      },
+      {
+        "id": "github",
+        "group": "Code hosting",
+        "title": "GitHub",
+        "gives": "agents read/write repos, PRs, issues and CI",
+        "servers": [
+          "github"
+        ],
+        "env": [
+          "GITHUB_PERSONAL_ACCESS_TOKEN"
+        ],
+        "default": true
+      },
+      {
+        "id": "deploy-coolify",
+        "group": "Deploy",
+        "title": "Coolify",
+        "gives": "deploys, env vars and logs of self-hosted apps",
+        "servers": [
+          "coolify"
+        ],
+        "env": [
+          "COOLIFY_BASE_URL",
+          "COOLIFY_ACCESS_TOKEN"
+        ]
+      },
+      {
+        "id": "deploy-vercel",
+        "group": "Deploy",
+        "title": "Vercel",
+        "gives": "deploys, env and logs on Vercel (OAuth on first use)",
+        "servers": [
+          "vercel"
+        ]
+      },
+      {
+        "id": "database-supabase",
+        "group": "Database",
+        "title": "Supabase",
+        "gives": "projects, SQL and logs (OAuth on first use)",
+        "servers": [
+          "supabase"
+        ]
+      },
+      {
+        "id": "cloudflare",
+        "group": "Cloudflare",
+        "title": "Cloudflare",
+        "gives": "DNS, cache purge, rules and docs search",
+        "servers": [
+          "cloudflare-api",
+          "cloudflare-docs"
+        ]
+      },
+      {
+        "id": "notion",
+        "group": "Notion",
+        "title": "Notion",
+        "gives": "agents read and write your Notion workspace (OAuth on first use)",
+        "servers": [
+          "notion"
+        ]
+      },
+      {
+        "id": "site",
+        "group": "Site",
+        "title": "Your site's MCP",
+        "gives": "pages, blog, products and settings through the site's own MCP endpoint",
+        "servers": [
+          "site"
+        ],
+        "env": [
+          "SITE_URL",
+          "SITE_MCP_KEY",
+          "MCP_CALLER_LABEL"
+        ]
+      },
+      {
+        "id": "social-postiz",
+        "group": "Social",
+        "title": "Postiz",
+        "gives": "schedule posts across social accounts",
+        "servers": [
+          "postiz"
+        ],
+        "env": [
+          "POSTIZ_BACKEND_URL",
+          "POSTIZ_API_KEY"
+        ]
+      },
+      {
+        "id": "automation-n8n",
+        "group": "Automation",
+        "title": "n8n",
+        "gives": "list and run n8n workflows exposed to MCP",
+        "servers": [
+          "n8n"
+        ],
+        "env": [
+          "N8N_URL",
+          "N8N_MCP_TOKEN"
+        ]
+      },
+      {
+        "id": "search-searxng",
+        "group": "Search",
+        "title": "SearXNG",
+        "gives": "private web search for agents",
+        "servers": [
+          "searxng"
+        ],
+        "env": [
+          "SEARXNG_URL"
+        ]
+      },
+      {
+        "id": "telemetry",
+        "group": "Telemetry",
+        "title": "Local collector → OpenObserve",
+        "gives": "every CLI's OTel logs, metrics and traces through a local collector",
+        "services": [
+          "otel-collector"
+        ],
+        "default": true
+      },
+      {
+        "id": "judge",
+        "group": "Judge/RCA",
+        "title": "Local judge model",
+        "gives": "online evaluation and alert triage by a small local model",
+        "services": [
+          "judge-lane",
+          "alertd"
+        ]
+      },
+      {
+        "id": "shared-memory",
+        "group": "Shared memory",
+        "title": "Shared agent memory",
+        "gives": "every agent's memory digest in one synced folder (Nextcloud, Drive or any synced directory)",
+        "services": [
+          "claude-shared"
+        ]
+      },
+      {
+        "id": "fleet",
+        "group": "Fleet",
+        "title": "Several machines over SSH",
+        "gives": "one controller pushes registry, config and secrets to every node",
+        "services": [
+          "nodes",
+          "sync"
+        ]
+      }
+    ]
+  },
+  "fleet": {
+    "controller": "node-a",
+    "hub_ssh": [
+      "node-a.local"
+    ],
+    "vault": "secrets/fleet.sops.env",
+    "vault_meta": "secrets/fleet.meta.json"
+  }
+}
