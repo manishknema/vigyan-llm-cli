@@ -45,7 +45,7 @@ Review first without root: `./install.sh render --issuer … --origin … --out 
 |---|---|---|
 | `--issuer` | required | OIDC issuer; discovery is read from `<issuer>/.well-known/openid-configuration` (or `--discovery-file`) |
 | `--origin` | required | public HTTPS origin of the gateway; callback = `<origin>/oauth2/callback` |
-| `--group` (`FA_GROUP`) | `operators` | group whose members may write; `add-group --group X` adds more |
+| `--group` (`FA_GROUP`) | `operators` | group whose members may write; `add-group --group X` adds more. Must match `[A-Za-z0-9._-]+` (it is used in an nginx location name and a URL query); map provider groups with spaces to such an alias |
 | `--port` (`FA_PORT`) | `4180` | loopback port of oauth2-proxy |
 | `--cookie-expire` (`FA_COOKIE_EXPIRE`) | `8h` | session length (no refresh) |
 | `--cookie-name` (`FA_COOKIE_NAME`) | `_forward_auth` | host-only, Secure, SameSite=Lax |
