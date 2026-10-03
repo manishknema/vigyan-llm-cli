@@ -35,6 +35,9 @@ It exists to solve four practical problems:
 - [AGENTS.md](AGENTS.md) — model-agnostic agent protocol
 - [INSTRUCTIONS.md](INSTRUCTIONS.md) — generic redirect to AGENTS.md
 - [skills/](skills/) — optional reusable agent briefs
+- [docs/SECRETS.md](docs/SECRETS.md) — secrets, config and features: configure once, every machine follows (`llm-cli setup`, vault, sync)
+- [docs/FEATURES.md](docs/FEATURES.md) — the feature catalog, generated from the registry
+- [kits/gateway-forward-auth/](kits/gateway-forward-auth/) — protect nginx writes with any OpenID Connect provider (oauth2-proxy, pinned + sha256, all paths configurable)
 
 ## Intended Audience
 
