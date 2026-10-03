@@ -292,6 +292,20 @@ function setValue(name, { rotate = false } = {}) {
 
 // ── node-side sync: vault + registry -> mcp.env -> wire ─────────────────────
 const shq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+// A vault-managed secret must not also live in ~/.bashrc as a literal fallback
+// (${NAME:-literal}); rewrite such fallbacks to fail loudly instead. Returns the names scrubbed.
+function scrubLiteralDefaults(secretNames) {
+  const rc = join(HOME, '.bashrc');
+  if (!existsSync(rc)) return [];
+  let txt = readFileSync(rc, 'utf8');
+  const hit = [];
+  for (const n of secretNames) {
+    const re = new RegExp(`\\$\\{${n}:-[^}$]+\\}`, 'g');
+    if (re.test(txt)) { txt = txt.replace(re, `\${${n}:?${n} not set: llm-cli secrets sync}`); hit.push(n); }
+  }
+  if (hit.length) { writePrivate(rc + `.bak-scrub-${Date.now()}`, readFileSync(rc, 'utf8')); writeFileSync(rc, txt); }
+  return hit;
+}
 function ensureBashrc() {
   const rc = join(HOME, '.bashrc');
   const begin = '# >>> vigyan mcp env (llm-cli secrets sync)', end = '# <<< vigyan mcp env';
@@ -339,6 +353,7 @@ function nodeSync() {
   const changed = sha(prev.replace(/^#.*\n/, '')) !== sha(body.replace(/^#.*\n/, ''));
   if (changed) writePrivate(SECRET_ENV, body);
   const rcAdded = ensureBashrc();
+  const scrubbed = scrubLiteralDefaults(Object.entries(env).filter(([, d]) => d.secret).map(([n]) => n));
   const st = readJson(STATE) ?? {};
   const rHash = regHash(L);
   const next = { node: NODE, registry_hash: rHash, vault_hash: fileHash(L.vault), runtime_hash: runtimeHash(), env_changed_at: changed ? new Date().toISOString() : st.env_changed_at ?? null, synced_at: new Date().toISOString(), present: have, missing: lack };
@@ -355,7 +370,7 @@ function nodeSync() {
   // refresh the cached login banner so it shows the new registry/drift right away
   const a19s = [join(here, 'a19-install-llm-clis-all.sh'), '/usr/local/vigyan/a19-install-llm-clis-all.sh'].find(existsSync);
   if (a19s && (changed || wired === 'rewired')) spawnSync('bash', [a19s, 'status', '--refresh'], { stdio: 'ignore', timeout: 120000 });
-  say(`secrets sync on ${NODE}: ${have.length} variable(s) in ${SECRET_ENV}${changed ? ' (changed)' : ' (unchanged)'}; missing: ${lack.join(', ') || 'none'}; wire: ${wired}${rcAdded ? '; ~/.bashrc now sources it' : ''}`);
+  say(`secrets sync on ${NODE}: ${have.length} variable(s) in ${SECRET_ENV}${changed ? ' (changed)' : ' (unchanged)'}; missing: ${lack.join(', ') || 'none'}; wire: ${wired}${rcAdded ? '; ~/.bashrc now sources it' : ''}${scrubbed.length ? `; removed literal defaults for ${scrubbed.join(', ')} from ~/.bashrc` : ''}`);
   if (changed) say('running claude/codex/opencode/agy sessions keep their old environment: restart them to pick up changed MCP values');
 }
 function parseShq(s) { return s.startsWith("'") ? s.slice(1, -1).replace(/'\\''/g, "'") : s; }
