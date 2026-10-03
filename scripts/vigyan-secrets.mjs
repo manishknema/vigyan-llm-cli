@@ -342,6 +342,7 @@ function nodeSync() {
   const wanted = new Set(wantedVars(L.reg));
   for (const [n, d] of Object.entries(env)) {
     if (n.startsWith('$')) continue;
+    if (d.export === false) continue;   // service secrets: read from the vault by their installer, never put in shells
     let v = null;
     if (!d.secret) for (const s of d.sources ?? []) { if (['config', 'generate'].includes(s.type)) { v = runSource(s, n); if (v) break; } }
     if (!v) v = vault.get(n) ?? null;   // secrets, and config values that had to be asked for
