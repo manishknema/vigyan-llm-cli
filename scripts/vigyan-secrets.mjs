@@ -133,7 +133,10 @@ function mirrorVault(L) {
   if (!dir || !L.isMaster || !existsSync(L.vault)) return;
   const owner = process.env.VIGYAN_VAULT_MIRROR_OWNER ?? LOCAL_CONF.vault_mirror_owner;
   let r;
-  if (owner) r = spawnSync('sudo', ['-n', 'rsync', '-c', '--mkpath', `--chown=${owner}:${owner}`, '--chmod=D0750,F0640', L.vault, dir.replace(/\/?$/, '/')], { encoding: 'utf8' });
+  if (owner) {   // create the dir as the owner first: rsync --mkpath under sudo would make it root:root
+    r = spawnSync('sudo', ['-n', 'install', '-d', '-o', owner, '-g', owner, '-m', '0750', dir], { encoding: 'utf8' });
+    if (r.status === 0) r = spawnSync('sudo', ['-n', 'rsync', '-c', `--chown=${owner}:${owner}`, '--chmod=F0640', L.vault, dir.replace(/\/?$/, '/')], { encoding: 'utf8' });
+  }
   else { try { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, basename(L.vault)), readFileSync(L.vault)); r = { status: 0 }; } catch (e) { r = { status: 1, stderr: String(e.message) }; } }
   if (r.status === 0) console.error(`vault ciphertext mirrored to ${dir}`);
   else console.error(`WARN: vault mirror to ${dir} failed: ${(r.stderr || '').trim().split('\n')[0] || 'no sudo/rsync'}`);
