@@ -43,6 +43,7 @@ llm-cli features [--docs]                       # on/off/missing per feature; --
 llm-cli secrets status | set NAME | rotate NAME | bootstrap [--refresh]
 llm-cli secrets keygen | recipients --collect   # one age key per machine; the vault is encrypted to all of them
 llm-cli secrets escrow init | verify             # offline recovery key (static recipient), shown once; verify lists names
+llm-cli secrets escrow export-usb MOUNTPOINT     # encrypted vault copy (+ .prev) + README to a removable stick
 llm-cli sync [--check]                          # push changed registry / vault / runtime to every machine
 ```
 
@@ -79,6 +80,11 @@ offline recovery key as a static recipient (`secrets/recipients.static.txt`, kep
   reach, then shreds it.
 - **Covers backups too.** `llm-cli secrets recipients --backup-file PATH` writes nodes + static
   keys in `age -R` format, for any backup you encrypt to the same people.
+- **Offline copy.** `llm-cli secrets escrow export-usb MOUNTPOINT` writes the encrypted vault (keeping
+  the previous copy as `.prev`), the public recipients and a recovery README to a USB stick. It
+  refuses any mountpoint that is not on a removable disk, and never writes a key.
+- **Hardware keys.** A static recipient can be a plugin recipient such as `age1yubikey1…`
+  (`age-plugin-yubikey` must then be on PATH for sops and age).
 - **Optional mirror.** Set `vault_mirror_dir` (and `vault_mirror_owner` for a root-owned target)
   in `~/.config/vigyan/llm-cli.json` to copy the ciphertext there after every vault write.
 

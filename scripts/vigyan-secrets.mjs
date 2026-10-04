@@ -20,6 +20,8 @@
 //   secrets escrow init [--replace]                      offline recovery key: printed ONCE on the terminal (+ QR), added
 //                                                        as a static recipient, vault re-encrypted. Never written to disk
 //   secrets escrow verify                                type the recovery key back: proves it decrypts the vault (names only)
+//   secrets escrow export-usb MOUNTPOINT                 vault ciphertext + recipients + README to a removable stick
+//                                                        (previous copy kept as .prev); refuses a non-removable mount
 //   secrets scan [FILE…|--staged]                        fail if any vault value (or key-shaped string) is in the files / staged diff
 //   secrets install-sops                                 user-scope sops binary, sha256-verified (Linux ~/.local/bin, Windows ~/bin)
 //   features [--docs]                                    on/off/missing per feature; --docs prints docs/FEATURES.md
@@ -29,7 +31,7 @@
 // Values move only file -> vault -> file. They are never printed, logged, put in argv, sent to
 // telemetry, or written anywhere but the vault and the 600 env file.
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, chmodSync, rmSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, chmodSync, rmSync, readdirSync, realpathSync } from 'node:fs';
 import { homedir, hostname, tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes } from 'node:crypto';
@@ -103,7 +105,8 @@ function decryptVault(vault) {
   if (r.status !== 0) die(`cannot decrypt ${vault} with ${AGE_KEY} (is this node a recipient? llm-cli secrets recipients --collect on the controller)`);
   return parseDotenv(r.stdout);
 }
-// recipient files: one `age1… # label` per line. recipients.txt = node keys (rewritten by
+// recipient files: one `age1… # label` per line (age X25519 keys, or plugin recipients such as
+// age1yubikey1… for a future YubiKey via age-plugin-yubikey: sops/age then need the plugin on PATH). recipients.txt = node keys (rewritten by
 // `recipients --collect`); recipients.static.txt = keys that are not nodes (the offline recovery
 // key), never touched by --collect.
 function readRecipientFile(f) {
@@ -701,6 +704,7 @@ function escrowInit() {
   console.log(`recovery key added as a static recipient (${pub.slice(0, 16)}…); vault re-encrypted to ${recipients(L).length} recipients (${fileHash(L.vault)})`);
   console.log('next: 1) llm-cli secrets escrow verify (type it back from paper)');
   console.log('      2) llm-cli secrets recipients --backup-file <VVC checkout>/configs/backup/age-recipients.txt, commit, a6-backup-daily --install (git drill)');
+  console.log('      3) llm-cli secrets escrow export-usb <USB mountpoint> (encrypted vault copy for the stick; the key goes into KeePassXC there)');
 }
 function escrowVerify() {
   const L = loadRegistry();
@@ -733,6 +737,74 @@ function escrowVerify() {
   console.log('done: key file shredded. Clear your terminal scrollback.');
 }
 
+// export-usb: the offline copy that goes with the paper/KeePassXC key. Ciphertext only, never a
+// key. Linux: the mountpoint must be the root of a mounted filesystem on a removable/hotplug/USB disk.
+function removableMount(mnt) {
+  const f = spawnSync('findmnt', ['-n', '-o', 'SOURCE,TARGET', '--target', mnt], { encoding: 'utf8' });
+  const [src, target] = (f.stdout || '').trim().split(/\s+/);
+  if (f.status !== 0 || !src) return { ok: false, why: `${mnt} is not on a mounted filesystem` };
+  if (target !== realpathSync(mnt)) return { ok: false, why: `${mnt} is not a mountpoint (it is inside ${target})` };
+  if (!src.startsWith('/dev/')) return { ok: false, why: `${mnt} is ${src}, not a block device` };
+  const parent = (spawnSync('lsblk', ['-no', 'PKNAME', src], { encoding: 'utf8' }).stdout || '').trim().split('\n')[0];
+  const disk = parent ? `/dev/${parent}` : src;
+  const [rm, hp, tran] = (spawnSync('lsblk', ['-dno', 'RM,HOTPLUG,TRAN', disk], { encoding: 'utf8' }).stdout || '').trim().split(/\s+/);
+  const ok = rm === '1' || hp === '1' || tran === 'usb';
+  return { ok, why: ok ? `${disk} (removable=${rm} hotplug=${hp} tran=${tran || '-'})` : `${disk} is not removable (removable=${rm ?? '?'} hotplug=${hp ?? '?'} tran=${tran || '-'})` };
+}
+function exportVaultTo(L, dest) {   // dest = <stick>/vigyan-vault; returns the vault hash written
+  mkdirSync(dest, { recursive: true });
+  const cur = join(dest, basename(L.vault));
+  if (existsSync(cur)) writeFileSync(cur + '.prev', readFileSync(cur));     // keep the previous copy
+  writeFileSync(cur, readFileSync(L.vault));
+  if (fileHash(cur) !== fileHash(L.vault)) die(`copy to ${cur} does not match the vault`, 1);
+  writeBackupRecipientsQuiet(L, join(dest, 'recipients.txt'));
+  const recips = [...new Map([...readRecipientFile(L.recipientsFile), ...readRecipientFile(L.staticRecipientsFile)])].map(([k, n]) => `- ${n}: \`${k}\``).join('\n');
+  writeFileSync(join(dest, 'README.md'), `# Vigyan fleet vault — offline copy
+
+Written ${new Date().toISOString()} by \`llm-cli secrets escrow export-usb\` on ${NODE}.
+\`${basename(L.vault)}\` is the SOPS+age **encrypted** vault (values are ciphertext; names are readable).
+\`${basename(L.vault)}.prev\` is the copy this one replaced. No key is on this stick.
+
+Vault hash: \`${fileHash(L.vault)}\`
+
+## Who can decrypt it (public keys)
+
+${recips}
+
+## Recover with the paper / KeePassXC key (if every machine key is lost)
+
+On any Linux machine with \`sops\` and \`age\`:
+
+    install -m 600 /dev/null /dev/shm/r.txt        # RAM only
+    # type the AGE-SECRET-KEY-1… line from paper/KeePassXC into /dev/shm/r.txt (an editor, not the shell history)
+    SOPS_AGE_KEY_FILE=/dev/shm/r.txt sops -d --input-type dotenv --output-type dotenv ${basename(L.vault)} | cut -d= -f1   # names
+    SOPS_AGE_KEY_FILE=/dev/shm/r.txt sops -d --input-type dotenv --output-type dotenv ${basename(L.vault)} > /dev/shm/vault.env   # values, RAM only
+    shred -u /dev/shm/r.txt                         # and /dev/shm/vault.env when done
+
+Then re-create machine keys (\`llm-cli secrets keygen\`), put the vault back under
+\`lifeOS-personal/secrets/\`, run \`llm-cli secrets recipients --collect\` and \`llm-cli sync\`.
+A YubiKey recipient (\`age1yubikey1…\`, if added later) needs \`age-plugin-yubikey\` on PATH:
+\`age-plugin-yubikey --identity > /dev/shm/yk.txt\` and use that file as SOPS_AGE_KEY_FILE.
+`);
+  spawnSync('sync', [], { stdio: 'ignore' });
+  return fileHash(cur);
+}
+function writeBackupRecipientsQuiet(L, file) { const saved = console.log; console.log = () => {}; try { writeBackupRecipients(L, file); } finally { console.log = saved; } }
+function escrowExportUsb() {
+  const L = loadRegistry();
+  if (!L.isMaster) die('export-usb runs on the controller (where the vault is)');
+  const mnt = args[3];
+  if (!mnt) die('usage: secrets escrow export-usb MOUNTPOINT   (the USB stick, e.g. /media/$USER/VAULT)');
+  if (process.platform !== 'linux') die('export-usb checks the device with lsblk: run it on Linux');
+  if (!existsSync(mnt)) die(`${mnt} does not exist (is the stick mounted?)`);
+  if (!existsSync(L.vault)) die(`no vault at ${L.vault}`);
+  const dev = removableMount(mnt);
+  if (!dev.ok) die(`refusing: ${dev.why}. Plug in the USB stick and pass its mountpoint.`);
+  const h = exportVaultTo(L, join(mnt, 'vigyan-vault'));
+  emit('secrets.escrow', { action: 'export-usb', vault_hash: h });
+  console.log(`vault ciphertext ${h} + recipients + README written to ${join(mnt, 'vigyan-vault')} on ${dev.why}; previous copy kept as .prev. No key was written.`);
+}
+
 // ── dispatch ─────────────────────────────────────────────────────────────────
 const [a0, a1] = args;
 const list = (v) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : null);
@@ -745,7 +817,7 @@ const table = {
   'secrets:status': status,
   'secrets:keygen': keygen,
   'secrets:recipients': recipientsCmd,
-  'secrets:escrow': () => (args[2] === 'verify' ? escrowVerify() : args[2] === 'init' ? escrowInit() : die('usage: secrets escrow init [--replace] | verify')),
+  'secrets:escrow': () => (args[2] === 'verify' ? escrowVerify() : args[2] === 'init' ? escrowInit() : args[2] === 'export-usb' ? escrowExportUsb() : die('usage: secrets escrow init [--replace] | verify | export-usb MOUNTPOINT')),
   'secrets:scan': scan,
   'secrets:install-sops': installSops,
   'features:': featuresCmd,
