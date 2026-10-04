@@ -112,7 +112,10 @@ function encryptVault(L, map) {
   const body = [...map].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
   try {
     writePrivate(tmp, body);
-    const r = sops(['--encrypt', '--age', rc.join(','), '--input-type', 'dotenv', '--output-type', 'dotenv', tmp]);
+    // --filename-override: sops loads the nearest .sops.yaml from the cwd and refuses a temp path that
+    // matches none of its creation rules ("no matching creation rules found" when run inside the vault
+    // repo, 2026-10-04); match the rules against the vault file being written
+    const r = sops(['--encrypt', '--age', rc.join(','), '--filename-override', L.vault, '--input-type', 'dotenv', '--output-type', 'dotenv', tmp]);
     if (r.status !== 0) die(`sops --encrypt failed: ${(r.stderr || '').split('\n')[0]}`);
     mkdirSync(dirname(L.vault), { recursive: true });
     writeFileSync(L.vault, r.stdout);
