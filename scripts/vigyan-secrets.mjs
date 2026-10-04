@@ -10,10 +10,16 @@
 //   secrets bootstrap [--refresh] [--only A,B] [--yes]   resolve sources -> vault (controller)
 //   secrets set NAME [--stdin]                           hidden prompt (or stdin) -> vault
 //   secrets rotate NAME                                  new value from its source or a prompt -> vault -> fleet sync
+//   secrets unset NAME                                   remove a value from the vault -> fleet sync
 //   secrets sync [--pull] [--no-wire]                    vault + registry -> ~/.config/vigyan/secret.d/mcp.env (600) -> wire
 //   secrets status                                       every variable: kind, source, present/missing, set at. Never values
 //   secrets keygen [--public]                            this node's age key (~/.config/sops/age/keys.txt), print the PUBLIC key
-//   secrets recipients [--collect]                       vault recipients = every node's age public key (collected over ssh)
+//   secrets recipients [--collect] [--backup-file PATH]  vault recipients = every node's age public key (collected over ssh)
+//                                                        + static recipients (secrets/recipients.static.txt, e.g. the
+//                                                        offline recovery key); --backup-file writes them for age -R
+//   secrets escrow init [--replace]                      offline recovery key: printed ONCE on the terminal (+ QR), added
+//                                                        as a static recipient, vault re-encrypted. Never written to disk
+//   secrets escrow verify                                type the recovery key back: proves it decrypts the vault (names only)
 //   secrets scan [FILE…|--staged]                        fail if any vault value (or key-shaped string) is in the files / staged diff
 //   secrets install-sops                                 user-scope sops binary, sha256-verified (Linux ~/.local/bin, Windows ~/bin)
 //   features [--docs]                                    on/off/missing per feature; --docs prints docs/FEATURES.md
@@ -26,7 +32,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, chmodSync, rmSync, readdirSync } from 'node:fs';
 import { homedir, hostname, tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
-import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -70,6 +76,7 @@ function loadRegistry() {
     vault: isMaster ? join(dirname(p), fleet.vault ?? 'secrets/fleet.sops.env') : join(BUNDLE, 'fleet.sops.env'),
     meta: isMaster ? join(dirname(p), fleet.vault_meta ?? 'secrets/fleet.meta.json') : join(BUNDLE, 'fleet.meta.json'),
     recipientsFile: isMaster ? join(dirname(p), 'secrets', 'recipients.txt') : null,
+    staticRecipientsFile: isMaster ? join(dirname(p), 'secrets', 'recipients.static.txt') : null,
   };
 }
 const regHash = (L) => L.reg.hash ?? readJson(join(BUNDLE, 'registry.resolved.json'))?.hash ?? fileHash(L.path);
@@ -96,11 +103,40 @@ function decryptVault(vault) {
   if (r.status !== 0) die(`cannot decrypt ${vault} with ${AGE_KEY} (is this node a recipient? llm-cli secrets recipients --collect on the controller)`);
   return parseDotenv(r.stdout);
 }
+// recipient files: one `age1… # label` per line. recipients.txt = node keys (rewritten by
+// `recipients --collect`); recipients.static.txt = keys that are not nodes (the offline recovery
+// key), never touched by --collect.
+function readRecipientFile(f) {
+  const m = new Map();
+  if (f && existsSync(f)) for (const l of readFileSync(f, 'utf8').split('\n')) { const x = l.match(/^(age1[0-9a-z]+)\s*#?\s*(.*)$/); if (x) m.set(x[1], x[2] || '?'); }
+  return m;
+}
 function recipients(L) {
-  const f = L.recipientsFile;
-  const list = f && existsSync(f) ? readFileSync(f, 'utf8').split('\n').map((l) => l.replace(/#.*/, '').trim()).filter((l) => l.startsWith('age1')) : [];
+  const list = [...readRecipientFile(L.recipientsFile).keys()];
   if (!list.length) { const own = agePublic(); if (own) list.push(own); }
-  return [...new Set(list)];
+  return [...new Set([...list, ...readRecipientFile(L.staticRecipientsFile).keys()])];
+}
+function writeSopsYaml(L) {
+  writeFileSync(join(dirname(L.path), '.sops.yaml'), `# llm-cli fleet vault recipients (public keys only). Source: secrets/recipients.txt + recipients.static.txt\ncreation_rules:\n  - path_regex: secrets/.*\\.sops\\.env$\n    age: >-\n      ${recipients(L).join(',')}\n`);
+}
+// age -R format for the secrets backup tarballs (a6): comments on their own lines, age rejects trailing ones
+function writeBackupRecipients(L, file) {
+  const all = new Map([...readRecipientFile(L.recipientsFile), ...readRecipientFile(L.staticRecipientsFile)]);
+  writeFileSync(file, `# fleet vault recipients (node keys + static, e.g. the offline recovery key) for backup encryption.\n# PUBLIC keys only. Written by llm-cli secrets recipients --backup-file; age rejects trailing comments.\n${[...all].map(([k, n]) => `# ${n}\n${k}`).join('\n')}\n`);
+  console.log(`backup recipients (${all.size}) written to ${file}: commit it and re-install the backup (a6-backup-daily --install) so the tarballs use them`);
+}
+// After every vault write: copy the ciphertext to a mirror dir (Nextcloud admin/files/Vigyan-Vault on the
+// controller). VIGYAN_VAULT_MIRROR_DIR / llm-cli.json vault_mirror_dir; with vault_mirror_owner it is
+// copied as root with that owner (Nextcloud data dir), like the Claude-Shared publish. Never fatal.
+function mirrorVault(L) {
+  const dir = process.env.VIGYAN_VAULT_MIRROR_DIR ?? LOCAL_CONF.vault_mirror_dir;
+  if (!dir || !L.isMaster || !existsSync(L.vault)) return;
+  const owner = process.env.VIGYAN_VAULT_MIRROR_OWNER ?? LOCAL_CONF.vault_mirror_owner;
+  let r;
+  if (owner) r = spawnSync('sudo', ['-n', 'rsync', '-c', '--mkpath', `--chown=${owner}:${owner}`, '--chmod=D0750,F0640', L.vault, dir.replace(/\/?$/, '/')], { encoding: 'utf8' });
+  else { try { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, basename(L.vault)), readFileSync(L.vault)); r = { status: 0 }; } catch (e) { r = { status: 1, stderr: String(e.message) }; } }
+  if (r.status === 0) console.error(`vault ciphertext mirrored to ${dir}`);
+  else console.error(`WARN: vault mirror to ${dir} failed: ${(r.stderr || '').trim().split('\n')[0] || 'no sudo/rsync'}`);
 }
 function encryptVault(L, map) {
   let rc = recipients(L);
@@ -119,6 +155,7 @@ function encryptVault(L, map) {
     if (r.status !== 0) die(`sops --encrypt failed: ${(r.stderr || '').split('\n')[0]}`);
     mkdirSync(dirname(L.vault), { recursive: true });
     writeFileSync(L.vault, r.stdout);
+    mirrorVault(L);
   } finally {
     try { writeFileSync(tmp, Buffer.alloc(body.length)); rmSync(tmp, { force: true }); } catch { /* gone */ }
   }
@@ -266,6 +303,19 @@ function bootstrap({ only, refresh, interactive } = {}) {
     for (const n of missing) printGuide(n, env[n].guide ?? {});
   }
   return { changed, missing };
+}
+function unsetValue(name) {
+  const L = loadRegistry();
+  if (!L.isMaster) die('secrets unset runs on the controller');
+  const vault = decryptVault(L.vault);
+  const meta = readJson(L.meta) ?? {};
+  if (!vault.has(name) && !meta[name]) { console.log(`${name}: not in the vault`); return; }
+  vault.delete(name); delete meta[name];
+  encryptVault(L, vault);
+  writeFileSync(L.meta, JSON.stringify(meta, null, 2) + '\n'); mirrorToBundle(L);
+  emit('secrets.changed', { names: name, vault_hash: fileHash(L.vault), removed: true });
+  console.log(`${name}: removed from the vault (${fileHash(L.vault)})`);
+  fleetSync({});
 }
 function setValue(name, { rotate = false } = {}) {
   const L = loadRegistry();
@@ -469,8 +519,9 @@ function setup() {
 function recipientsCmd() {
   const L = loadRegistry();
   if (!L.isMaster) die('recipients are managed on the controller');
-  const set = new Map();
-  if (existsSync(L.recipientsFile)) for (const l of readFileSync(L.recipientsFile, 'utf8').split('\n')) { const m = l.match(/^(age1[0-9a-z]+)\s*#?\s*(.*)$/); if (m) set.set(m[1], m[2] || '?'); }
+  const set = readRecipientFile(L.recipientsFile);
+  const statics = readRecipientFile(L.staticRecipientsFile);
+  for (const k of statics.keys()) set.delete(k);     // a static key never lives in the node list
   const own = agePublic(); if (own) set.set(own, NODE);
   if (flag('collect')) {
     for (const n of (readJson(NODES)?.nodes ?? []).filter((x) => x.ssh !== 'local' && x.enabled !== false)) {
@@ -482,10 +533,10 @@ function recipientsCmd() {
   }
   mkdirSync(dirname(L.recipientsFile), { recursive: true });
   writeFileSync(L.recipientsFile, `# age PUBLIC keys that can decrypt the fleet vault (one per node). Never put a secret key here.\n${[...set].map(([k, n]) => `${k} # ${n}`).join('\n')}\n`);
-  const sopsYaml = join(dirname(L.path), '.sops.yaml');
-  writeFileSync(sopsYaml, `# llm-cli fleet vault recipients (public keys only). Source: secrets/recipients.txt\ncreation_rules:\n  - path_regex: secrets/.*\\.sops\\.env$\n    age: >-\n      ${[...set.keys()].join(',')}\n`);
-  console.log(`${set.size} recipient(s) in ${L.recipientsFile}`);
-  if (existsSync(L.vault)) { encryptVault(L, decryptVault(L.vault)); console.log(`vault re-encrypted to ${set.size} recipient(s) (${fileHash(L.vault)})`); }
+  writeSopsYaml(L);
+  console.log(`${set.size} node recipient(s) in ${L.recipientsFile}${statics.size ? ` + ${statics.size} static (${[...statics.values()].join(', ')}) kept` : ''}`);
+  if (existsSync(L.vault)) { encryptVault(L, decryptVault(L.vault)); console.log(`vault re-encrypted to ${recipients(L).length} recipient(s) (${fileHash(L.vault)})`); }
+  if (opt('backup-file')) writeBackupRecipients(L, expand(opt('backup-file')));
 }
 
 // ── scan: no value (or key-shaped string) in files / staged diff ─────────────
@@ -577,6 +628,108 @@ function fleetSync() {
   for (const r of rows) console.log(`${pad(r[0], 18)}${pad(r[1], 34)}${r[2] ?? ''}`);
 }
 
+// ── escrow: offline recovery key (DEC-2026-10-04-02) ─────────────────────────
+// If every node key is lost, the vault and the secrets backups are unreadable. The recovery key
+// is a 4th, static recipient whose private half exists only on paper / a KeePassXC USB stick.
+// init: generated in memory (never a file), shown once on /dev/tty only (not stdout, so a
+// redirect or a log cannot capture it), confirmed by typing its tail back, then added.
+// verify: typed back into a 0600 file in /dev/shm for sops, which runs with an empty HOME so
+// no node key can do the decrypting instead; names only; the file is shredded.
+const TTY = '/dev/tty';
+function askTty(prompt) {   // hidden read from the terminal; the answer travels only through this pipe
+  const r = spawnSync('bash', ['-c', 'read -rs -p "$1: " v </dev/tty; echo >/dev/tty; printf %s "$v"', 'ask', prompt], { stdio: ['inherit', 'pipe', 'inherit'], encoding: 'utf8' });
+  return (r.stdout || '').trim() || null;
+}
+const toTty = (t) => writeFileSync(TTY, t);
+function ageKeypair() {
+  const { privateKey, publicKey } = generateKeyPairSync('x25519');
+  const d = Buffer.from(privateKey.export({ format: 'jwk' }).d, 'base64url');
+  const x = Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url');
+  const out = { pub: bech32Encode('age', x), sec: bech32Encode('age-secret-key-', d).toUpperCase() };
+  d.fill(0);
+  return out;
+}
+function bech32Decode(str) {
+  const s = str.toLowerCase(); const i = s.lastIndexOf('1');
+  if (i < 1) return null;
+  const all = [...s.slice(i + 1)].map((c) => B32.indexOf(c));
+  if (all.length < 7 || all.some((v) => v < 0)) return null;
+  const polymod = (v) => { const G = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3]; let c = 1; for (const x of v) { const t = c >> 25; c = ((c & 0x1ffffff) << 5) ^ x; for (let k = 0; k < 5; k++) if ((t >> k) & 1) c ^= G[k]; } return c; };
+  const hrp = s.slice(0, i);
+  const hx = [...hrp].map((c) => c.charCodeAt(0) >> 5).concat([0], [...hrp].map((c) => c.charCodeAt(0) & 31));
+  if (polymod([...hx, ...all]) !== 1) return null;   // checksum: catches typos
+  const data = all.slice(0, -6);
+  const out = []; let acc = 0, bits = 0;
+  for (const v of data) { acc = (acc << 5) | v; bits += 5; if (bits >= 8) { bits -= 8; out.push((acc >> bits) & 255); } }
+  return { hrp: s.slice(0, i), bytes: Buffer.from(out) };
+}
+function agePublicOf(secret) {   // public key of an AGE-SECRET-KEY-1… string, without age-keygen
+  const dec = bech32Decode(secret.trim());
+  if (!dec || dec.hrp !== 'age-secret-key-' || dec.bytes.length !== 32) return null;
+  const pk = createPublicKey(createPrivateKey({ key: { kty: 'OKP', crv: 'X25519', d: dec.bytes.toString('base64url'), x: Buffer.alloc(32).toString('base64url') }, format: 'jwk' }));
+  dec.bytes.fill(0);
+  return bech32Encode('age', Buffer.from(pk.export({ format: 'jwk' }).x, 'base64url'));
+}
+function escrowInit() {
+  const L = loadRegistry();
+  if (!L.isMaster) die('escrow runs on the controller (where the vault is)');
+  if (!hasTty()) die('escrow init needs a terminal: the recovery key is shown once, on screen only (no TTY here)');
+  if (!existsSync(L.vault)) die(`no vault at ${L.vault}`);
+  const statics = readRecipientFile(L.staticRecipientsFile);
+  const old = [...statics].filter(([, n]) => /^recovery/.test(n));
+  if (old.length && !flag('replace')) die(`a recovery key is already a recipient (${old[0][0].slice(0, 16)}…, ${old[0][1]}); use --replace to swap it (the old paper key then stops working for new vault versions)`);
+  decryptVault(L.vault);   // fail now, before anything is shown, if this node cannot re-encrypt
+  const { pub, sec } = ageKeypair();
+  toTty(`\n  RECOVERY KEY for the fleet vault and the secrets backups. Shown ONCE; never stored on any machine.\n  Write it on paper and put it in KeePassXC on the USB stick (scan the QR). Keep the two apart.\n\n    ${sec}\n\n  public part (safe to share): ${pub}\n\n`);
+  const qr = spawnSync('qrencode', ['-t', 'ANSIUTF8', '-m', '2'], { input: sec, encoding: 'utf8' });
+  if (qr.status === 0 && qr.stdout) toTty(qr.stdout + '\n'); else toTty('  (qrencode not installed: no QR; apt install qrencode)\n\n');
+  const tail = sec.slice(-8);
+  const typed = askTty('  type the LAST 8 characters of the key (hidden; proves you wrote it down)');
+  if ((typed || '').trim().toUpperCase() !== tail) {
+    toTty('\x1b[2J\x1b[3J\x1b[H');
+    die('the last 8 characters did not match: nothing was changed. Run escrow init again.', 3);
+  }
+  toTty('\x1b[2J\x1b[3J\x1b[H');   // clear screen + scrollback (most terminals); also clear it yourself if yours keeps history
+  const keep = [...statics].filter(([, n]) => !/^recovery/.test(n));
+  writeFileSync(L.staticRecipientsFile, `# static age PUBLIC recipients of the fleet vault (not nodes; kept by recipients --collect).\n# recovery = offline key on paper/USB (llm-cli secrets escrow). Never put a secret key here.\n${[...keep, [pub, `recovery (offline; escrow init ${new Date().toISOString().slice(0, 10)} on ${NODE})`]].map(([k, n]) => `${k} # ${n}`).join('\n')}\n`);
+  writeSopsYaml(L);
+  encryptVault(L, decryptVault(L.vault));
+  emit('secrets.escrow', { action: old.length ? 'replaced' : 'init', recipients: recipients(L).length, vault_hash: fileHash(L.vault) });
+  console.log(`recovery key added as a static recipient (${pub.slice(0, 16)}…); vault re-encrypted to ${recipients(L).length} recipients (${fileHash(L.vault)})`);
+  console.log('next: 1) llm-cli secrets escrow verify (type it back from paper)');
+  console.log('      2) llm-cli secrets recipients --backup-file <VVC checkout>/configs/backup/age-recipients.txt, commit, a6-backup-daily --install (git drill)');
+}
+function escrowVerify() {
+  const L = loadRegistry();
+  if (!L.isMaster && !existsSync(L.vault)) die('no vault on this node');
+  if (!hasTty()) die('escrow verify needs a terminal (the key is typed, hidden)');
+  if (!existsSync('/dev/shm')) die('/dev/shm is missing: run verify on Linux (the key must stay in RAM)');
+  const sec = askTty('recovery key AGE-SECRET-KEY-1… (hidden)');
+  if (!sec || !/^AGE-SECRET-KEY-1[0-9A-Z]+$/.test(sec.trim().toUpperCase())) die('that is not an age secret key (AGE-SECRET-KEY-1…)', 3);
+  const pub = agePublicOf(sec.trim().toUpperCase());
+  if (!pub) die('the key checksum/length is wrong: check for a typo (0/O, 1/L, 8/B)', 3);
+  const statics = readRecipientFile(L.staticRecipientsFile);
+  const label = statics.get(pub) ?? readRecipientFile(L.recipientsFile).get(pub);
+  console.log(label ? `key matches recipient ${pub.slice(0, 16)}… (${label})` : `WARN: ${pub.slice(0, 16)}… is not in the recipient lists`);
+  const dir = join('/dev/shm', `vigyan-escrow-${process.pid}-${randomBytes(4).toString('hex')}`);
+  mkdirSync(dir, { mode: 0o700 });
+  const kf = join(dir, 'keys.txt');
+  try {
+    writePrivate(kf, sec.trim().toUpperCase() + '\n');
+    const env = { PATH: process.env.PATH, HOME: dir, XDG_CONFIG_HOME: dir, SOPS_AGE_KEY_FILE: kf };
+    const r = spawnSync('sops', ['--decrypt', '--input-type', 'dotenv', '--output-type', 'dotenv', L.vault], { encoding: 'utf8', env, maxBuffer: 16 << 20 });
+    if (r.status !== 0) die(`the recovery key does NOT decrypt ${L.vault}: it is not one of its recipients (llm-cli secrets recipients lists them)`, 1);
+    const names = [...parseDotenv(r.stdout).keys()].sort();
+    console.log(`OK: the recovery key decrypts the vault (${names.length} variables, values not shown):`);
+    for (const n of names) console.log(`  ${n}`);
+    emit('secrets.escrow', { action: 'verified', variables: names.length, vault_hash: fileHash(L.vault) });
+  } finally {
+    spawnSync('shred', ['-u', kf], { stdio: 'ignore' });
+    rmSync(dir, { recursive: true, force: true });
+  }
+  console.log('done: key file shredded. Clear your terminal scrollback.');
+}
+
 // ── dispatch ─────────────────────────────────────────────────────────────────
 const [a0, a1] = args;
 const list = (v) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : null);
@@ -584,10 +737,12 @@ const table = {
   'secrets:bootstrap': () => bootstrap({ only: list(opt('only')), refresh: flag('refresh'), interactive: !flag('yes') }),
   'secrets:set': () => setValue(a1 === 'set' ? args[2] : args[1]),
   'secrets:rotate': () => setValue(args[2], { rotate: true }),
+  'secrets:unset': () => unsetValue(args[2]),
   'secrets:sync': nodeSync,
   'secrets:status': status,
   'secrets:keygen': keygen,
   'secrets:recipients': recipientsCmd,
+  'secrets:escrow': () => (args[2] === 'verify' ? escrowVerify() : args[2] === 'init' ? escrowInit() : die('usage: secrets escrow init [--replace] | verify')),
   'secrets:scan': scan,
   'secrets:install-sops': installSops,
   'features:': featuresCmd,
@@ -595,4 +750,4 @@ const table = {
   'sync:': fleetSync,
 };
 const key = a0 === 'secrets' ? `secrets:${a1 ?? 'status'}` : `${a0}:`;
-(table[key] ?? (() => { console.error('usage: secrets bootstrap|set|rotate|sync|status|keygen|recipients|scan|install-sops  |  features [--docs]  |  setup [...]  |  sync [--check|--force]'); process.exit(2); }))();
+(table[key] ?? (() => { console.error('usage: secrets bootstrap|set|rotate|sync|status|keygen|recipients|escrow|scan|install-sops  |  features [--docs]  |  setup [...]  |  sync [--check|--force]'); process.exit(2); }))();

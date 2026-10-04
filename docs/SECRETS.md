@@ -42,6 +42,7 @@ llm-cli setup --features github,telemetry --yes # agents/CI: never prompts; list
 llm-cli features [--docs]                       # on/off/missing per feature; --docs regenerates docs/FEATURES.md
 llm-cli secrets status | set NAME | rotate NAME | bootstrap [--refresh]
 llm-cli secrets keygen | recipients --collect   # one age key per machine; the vault is encrypted to all of them
+llm-cli secrets escrow init | verify             # offline recovery key (static recipient), shown once; verify lists names
 llm-cli sync [--check]                          # push changed registry / vault / runtime to every machine
 ```
 
@@ -61,6 +62,25 @@ resolved registry and the vault over your existing SSH trust. Each machine decry
 its own key. A machine that was offline catches up on its next hourly run (it pulls from the
 controller). Every sync emits OTLP `config.synced` / `secrets.changed` events with names and hash
 prefixes only.
+
+## Recovery key (escrow)
+
+If every machine key is lost, the vault cannot be decrypted. `llm-cli secrets escrow init` adds an
+offline recovery key as a static recipient (`secrets/recipients.static.txt`, kept by
+`recipients --collect`):
+
+- **Generated in memory.** The key is never written to a file. It is shown once, on the terminal
+  only, with a QR when `qrencode` is installed. It refuses to run without a terminal.
+- **Confirmed before it counts.** You type the key's last 8 characters back. A wrong answer
+  changes nothing. On success the screen and scrollback are cleared and the vault is
+  re-encrypted.
+- **Proved later.** `llm-cli secrets escrow verify` takes the key typed from paper and lists the
+  variable names it decrypts. The check uses a temporary file in `/dev/shm` with no other key in
+  reach, then shreds it.
+- **Covers backups too.** `llm-cli secrets recipients --backup-file PATH` writes nodes + static
+  keys in `age -R` format, for any backup you encrypt to the same people.
+- **Optional mirror.** Set `vault_mirror_dir` (and `vault_mirror_owner` for a root-owned target)
+  in `~/.config/vigyan/llm-cli.json` to copy the ciphertext there after every vault write.
 
 ## Sample (fake values, sandbox home)
 
