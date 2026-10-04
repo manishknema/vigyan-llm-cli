@@ -758,6 +758,7 @@ function exportVaultTo(L, dest) {   // dest = <stick>/vigyan-vault; returns the 
   writeFileSync(cur, readFileSync(L.vault));
   if (fileHash(cur) !== fileHash(L.vault)) die(`copy to ${cur} does not match the vault`, 1);
   writeBackupRecipientsQuiet(L, join(dest, 'recipients.txt'));
+  const bundle = exportBundleTo(join(dest, 'lifeos'));
   const recips = [...new Map([...readRecipientFile(L.recipientsFile), ...readRecipientFile(L.staticRecipientsFile)])].map(([k, n]) => `- ${n}: \`${k}\``).join('\n');
   writeFileSync(join(dest, 'README.md'), `# Vigyan fleet vault — offline copy
 
@@ -781,13 +782,42 @@ On any Linux machine with \`sops\` and \`age\`:
     SOPS_AGE_KEY_FILE=/dev/shm/r.txt sops -d --input-type dotenv --output-type dotenv ${basename(L.vault)} > /dev/shm/vault.env   # values, RAM only
     shred -u /dev/shm/r.txt                         # and /dev/shm/vault.env when done
 
-Then re-create machine keys (\`llm-cli secrets keygen\`), put the vault back under
+${bundle ? `The encrypted git bundle of the vault's repo is in \`lifeos/\` (${bundle.name}, ${bundle.at || 'date in its .json'}):
+
+    age -d -i /dev/shm/r.txt lifeos/lifeos-latest.bundle.age > /dev/shm/l.bundle && git clone /dev/shm/l.bundle lifeOS-personal && shred -u /dev/shm/l.bundle
+
+` : ''}Then re-create machine keys (\`llm-cli secrets keygen\`), put the vault back under
 \`lifeOS-personal/secrets/\`, run \`llm-cli secrets recipients --collect\` and \`llm-cli sync\`.
 A YubiKey recipient (\`age1yubikey1…\`, if added later) needs \`age-plugin-yubikey\` on PATH:
 \`age-plugin-yubikey --identity > /dev/shm/yk.txt\` and use that file as SOPS_AGE_KEY_FILE.
 `);
   spawnSync('sync', [], { stdio: 'ignore' });
   return fileHash(cur);
+}
+// The newest encrypted repo bundle (a6 writes <usb_bundle_dir>/<name>.bundle.age + <name>.json daily,
+// age-encrypted to the vault recipients) goes on the stick too. Optional; missing = warning, not failure.
+function exportBundleTo(dest) {
+  const dir = process.env.VIGYAN_USB_BUNDLE_DIR ?? LOCAL_CONF.usb_bundle_dir;
+  if (!dir) return null;
+  let names = [];
+  try { names = readdirSync(dir).filter((n) => n.endsWith('.bundle.age')).sort(); } catch (e) { console.error(`WARN: bundle dir ${dir} not readable (${e.code}); stick has the vault only`); return null; }
+  if (!names.length) { console.error(`WARN: no *.bundle.age in ${dir} yet; stick has the vault only`); return null; }
+  const name = names[names.length - 1];
+  mkdirSync(dest, { recursive: true });
+  const cur = join(dest, 'lifeos-latest.bundle.age');
+  if (existsSync(cur)) writeFileSync(cur + '.prev', readFileSync(cur));
+  writeFileSync(cur, readFileSync(join(dir, name)));
+  if (fileHash(cur) !== fileHash(join(dir, name))) die(`bundle copy to ${cur} does not match ${name}`, 1);
+  const manifest = join(dir, name.replace(/\.bundle\.age$/, '.json'));
+  let at = null;
+  if (existsSync(manifest)) {
+    const mj = join(dest, 'lifeos-latest.json');
+    if (existsSync(mj)) writeFileSync(mj + '.prev', readFileSync(mj));
+    writeFileSync(mj, readFileSync(manifest));
+    at = readJson(manifest)?.at ?? null;
+  }
+  console.error(`bundle ${name} (${fileHash(cur)}) copied as lifeos/lifeos-latest.bundle.age`);
+  return { name, at, hash: fileHash(cur) };
 }
 function writeBackupRecipientsQuiet(L, file) { const saved = console.log; console.log = () => {}; try { writeBackupRecipients(L, file); } finally { console.log = saved; } }
 function escrowExportUsb() {

@@ -83,6 +83,8 @@ offline recovery key as a static recipient (`secrets/recipients.static.txt`, kep
 - **Offline copy.** `llm-cli secrets escrow export-usb MOUNTPOINT` writes the encrypted vault (keeping
   the previous copy as `.prev`), the public recipients and a recovery README to a USB stick. It
   refuses any mountpoint that is not on a removable disk, and never writes a key.
+  With `usb_bundle_dir` set, the newest `*.bundle.age` there (an encrypted `git bundle` of the vault's
+  repo) goes along as `lifeos/lifeos-latest.bundle.age` (+ `.prev`, + its `.json` manifest).
 - **Hardware keys.** A static recipient can be a plugin recipient such as `age1yubikey1…`
   (`age-plugin-yubikey` must then be on PATH for sops and age).
 - **Optional mirror.** Set `vault_mirror_dir` (and `vault_mirror_owner` for a root-owned target)
