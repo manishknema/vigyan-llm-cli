@@ -23,6 +23,7 @@
 //   secrets escrow export-usb MOUNTPOINT                 vault ciphertext + recipients + README to a removable stick
 //                                                        (previous copy kept as .prev); refuses a non-removable mount
 //   secrets scan [FILE…|--staged]                        fail if any vault value (or key-shaped string) is in the files / staged diff
+//   secrets scan --jsonl                                  stdin {"id","text"} lines -> stdout {"id","hits"} (names only; for indexers)
 //   secrets install-sops                                 user-scope sops binary, sha256-verified (Linux ~/.local/bin, Windows ~/bin)
 //   features [--docs]                                    on/off/missing per feature; --docs prints docs/FEATURES.md
 //   setup [--features a,b] [--add x] [--remove y] [--yes]   pick features -> bootstrap -> sync -> wire
@@ -33,7 +34,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, chmodSync, rmSync, readdirSync, realpathSync } from 'node:fs';
 import { homedir, hostname, tmpdir } from 'node:os';
-import { join, dirname, basename } from 'node:path';
+import { join, dirname, basename, relative } from 'node:path';
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
@@ -63,11 +64,23 @@ const AGE_KEY = process.env.SOPS_AGE_KEY_FILE || join(HOME, '.config', 'sops', '
 const LOCAL_CONF = (() => { try { return JSON.parse(readFileSync(join(HOME, '.config', 'vigyan', 'llm-cli.json'), 'utf8')); } catch { return {}; } })();
 const MASTER = [process.env.VIGYAN_MCP_REGISTRY, LOCAL_CONF.registry_master && LOCAL_CONF.registry_master.replace(/^~(?=$|[\\/])/, HOME), join(HOME, '.config', 'vigyan', 'registry.json')].find((p) => p && existsSync(p));
 const RT_RUNTIME = '.local/share/vigyan/llm-cli';
+// Per-user mode (team members, docs/operator/OPS_TEAM_ACCESS.md): llm-cli.json {"mode": "user"}, written by
+// `llm-cli team sync`. Servers/URLs come from the fleet registry bundle the operator copies in; secrets come
+// from the user's OWN small vault (user-vault/user.sops.env, encrypted to the user's own age key only) and
+// only for variables the registry marks `user: true`. The fleet vault is never involved.
+const USER_MODE = LOCAL_CONF.mode === 'user' || process.env.VIGYAN_USER_VAULT === '1';
+const USER_VAULT_DIR = join(CFG, 'user-vault');
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
 const writePrivate = (p, text) => { mkdirSync(dirname(p), { recursive: true, mode: 0o700 }); writeFileSync(p, text, { mode: 0o600 }); try { chmodSync(p, 0o600); } catch { /* NTFS */ } };
 
 // ── registry / vault locations ───────────────────────────────────────────────
 function loadRegistry() {
+  if (USER_MODE) {
+    const p = join(BUNDLE, 'registry.resolved.json');
+    const reg = readJson(p);
+    if (!reg) die(`no registry bundle at ${p}: the operator runs \`llm-cli team sync\` to deliver it`);
+    return { reg, path: p, isMaster: false, isUser: true, vault: join(USER_VAULT_DIR, 'user.sops.env'), meta: join(USER_VAULT_DIR, 'user.meta.json'), recipientsFile: null, staticRecipientsFile: null };
+  }
   const p = MASTER && existsSync(MASTER) ? MASTER : join(BUNDLE, 'registry.resolved.json');
   const reg = readJson(p);
   if (!reg) die(`no registry (master ${MASTER ?? 'not on this node'}, bundle ${BUNDLE}/registry.resolved.json): run llm-cli wire or llm-cli sync --pull`);
@@ -119,6 +132,26 @@ function recipients(L) {
   if (!list.length) { const own = agePublic(); if (own) list.push(own); }
   return [...new Set([...list, ...readRecipientFile(L.staticRecipientsFile).keys()])];
 }
+// After every vault write: a LOCAL commit in the vault's git repo so mirrors/bundles (which only see
+// committed history) carry it. Stages and commits ONLY the named files (`git commit -- <paths>`, never
+// -a: other sessions keep uncommitted work there); message has names only; never pushes. The repo's
+// own hooks (post-commit mirror) run as usual. Not a git repo / nothing changed: silently skipped.
+function commitVault(L, op, names = [], extra = []) {
+  if (!L.isMaster) return;
+  const top = spawnSync('git', ['-C', dirname(L.vault), 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  if (top.status !== 0) return;
+  const root = top.stdout.trim();
+  const files = [L.vault, L.meta, ...extra].filter((f) => f && existsSync(f)).map((f) => relative(root, f));
+  if (!files.length || files.some((f) => f.startsWith('..'))) return;
+  const g = (a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  g(['add', '--', ...files]);
+  if (g(['diff', '--cached', '--quiet', '--', ...files]).status === 0) return;
+  const msg = `vault: ${op}${names.length ? ` ${names.join(',')}` : ''}`;
+  const r = g(['commit', '-q', '-m', msg, '--', ...files]);
+  if (r.status === 0) console.error(`committed locally in ${root} (${msg}; ${files.length} file(s); not pushed)`);
+  else console.error(`WARN: vault not committed in ${root}: ${(r.stderr || r.stdout || '').trim().split('\n')[0]}`);
+}
+const recipientFiles = (L) => [L.recipientsFile, L.staticRecipientsFile, join(dirname(L.path), '.sops.yaml')];
 function writeSopsYaml(L) {
   writeFileSync(join(dirname(L.path), '.sops.yaml'), `# llm-cli fleet vault recipients (public keys only). Source: secrets/recipients.txt + recipients.static.txt\ncreation_rules:\n  - path_regex: secrets/.*\\.sops\\.env$\n    age: >-\n      ${recipients(L).join(',')}\n`);
 }
@@ -209,7 +242,8 @@ function runSource(src, name) {
   const local = !src.host || src.host === NODE;
   if (src.type === 'generate') return src.template.replace('{node}', NODE).replace('{agent}', 'llm-cli');
   if (src.type === 'config') return src.value ?? null;
-  if (src.type === 'random') return randomBytes(src.bytes ?? 24).toString('hex');      // canaries, internal shared secrets
+  // canaries, internal shared secrets; prefix for formats that need one (LiteLLM keys must start with sk-)
+  if (src.type === 'random') return (src.prefix ?? '') + randomBytes(src.bytes ?? 24).toString('hex');
   if (src.type === 'env') return process.env[src.name ?? name] || null;
   if (src.type === 'file') {
     for (const f of [expand(src.path)]) {
@@ -300,7 +334,7 @@ function bootstrap({ only, refresh, interactive } = {}) {
     } else { rows.push([n, (d.sources ?? []).map((s) => s.type).join(' > '), 'MISSING']); missing.push(n); }
     v = null;
   }
-  if (changed.length) { encryptVault(L, vault); writeFileSync(L.meta, JSON.stringify(meta, null, 2) + '\n'); mirrorToBundle(L); emit('secrets.changed', { names: changed.join(','), vault_hash: fileHash(L.vault) }); }
+  if (changed.length) { encryptVault(L, vault); writeFileSync(L.meta, JSON.stringify(meta, null, 2) + '\n'); mirrorToBundle(L); commitVault(L, 'bootstrap', changed); emit('secrets.changed', { names: changed.join(','), vault_hash: fileHash(L.vault) }); }
   console.log(`${pad('variable', 30)}${pad('source', 28)}state`);
   for (const r of rows) console.log(`${pad(r[0], 30)}${pad(r[1], 28)}${r[2]}`);
   console.log(`vault ${L.vault} (${fileHash(L.vault)}): ${changed.length} changed${changed.length ? ` (${changed.join(', ')})` : ''}, ${missing.length} missing`);
@@ -310,22 +344,29 @@ function bootstrap({ only, refresh, interactive } = {}) {
   }
   return { changed, missing };
 }
+// user mode: only `user: true` variables, own vault, own node only (no fleet sync)
+function userWritable(L, name) {
+  if (!L.isUser) return false;
+  if (!L.reg.env?.[name]?.user) die(`${name} is not a per-user variable (registry env.${name}.user); per-user: ${Object.entries(L.reg.env ?? {}).filter(([, d]) => d.user).map(([n]) => n).join(', ')}`);
+  return true;
+}
 function unsetValue(name) {
   const L = loadRegistry();
-  if (!L.isMaster) die('secrets unset runs on the controller');
+  if (!L.isMaster && !userWritable(L, name)) die('secrets unset runs on the controller');
   const vault = decryptVault(L.vault);
   const meta = readJson(L.meta) ?? {};
   if (!vault.has(name) && !meta[name]) { console.log(`${name}: not in the vault`); return; }
   vault.delete(name); delete meta[name];
   encryptVault(L, vault);
   writeFileSync(L.meta, JSON.stringify(meta, null, 2) + '\n'); mirrorToBundle(L);
+  commitVault(L, 'unset', [name]);
   emit('secrets.changed', { names: name, vault_hash: fileHash(L.vault), removed: true });
   console.log(`${name}: removed from the vault (${fileHash(L.vault)})`);
   fleetSync({});
 }
 function setValue(name, { rotate = false } = {}) {
   const L = loadRegistry();
-  if (!L.isMaster) die('secrets set/rotate run on the controller');
+  if (!L.isMaster && !userWritable(L, name)) die('secrets set/rotate run on the controller');
   const d = L.reg.env?.[name]; if (!d) die(`${name} is not declared in registry env`);
   if ((d.sources ?? []).some((s) => (s.type === 'config' && s.value) || s.type === 'generate')) die(`${name} has a fixed value in the registry (env.${name}.sources): change it there, then llm-cli sync`);
   let v = null, used = null;
@@ -343,6 +384,7 @@ function setValue(name, { rotate = false } = {}) {
     encryptVault(L, vault);
     meta[name] = { source: used, set_at: new Date().toISOString(), by: NODE, ...(rotate ? { rotated_at: new Date().toISOString() } : {}) };
     writeFileSync(L.meta, JSON.stringify(meta, null, 2) + '\n'); mirrorToBundle(L);
+    commitVault(L, rotate ? 'rotate' : 'set', [name]);
     emit('secrets.changed', { names: name, vault_hash: fileHash(L.vault), rotated: rotate });
   }
   console.log(`${name}: ${same ? 'unchanged' : rotate ? 'rotated' : 'set'} (vault ${fileHash(L.vault)})`);
@@ -393,7 +435,7 @@ function pullBundle() {
   return null;
 }
 function nodeSync() {
-  if (flag('pull') && !(MASTER && existsSync(MASTER))) { const h = pullBundle(); say(h ? `pulled registry + vault from ${h}` : 'hub unreachable; using the cached bundle'); }
+  if (flag('pull') && !USER_MODE && !(MASTER && existsSync(MASTER))) { const h = pullBundle(); say(h ? `pulled registry + vault from ${h}` : 'hub unreachable; using the cached bundle'); }
   const L = loadRegistry();
   const env = L.reg.env ?? {};
   const vault = decryptVault(L.vault);
@@ -402,6 +444,7 @@ function nodeSync() {
   for (const [n, d] of Object.entries(env)) {
     if (n.startsWith('$')) continue;
     if (d.export === false) continue;   // service secrets: read from the vault by their installer, never put in shells
+    if (L.isUser && d.secret && !d.user) continue;   // operator/fleet secrets never reach a team member
     let v = null;
     if (!d.secret) for (const s of d.sources ?? []) { if (['config', 'generate'].includes(s.type)) { v = runSource(s, n); if (v) break; } }
     if (!v) v = vault.get(n) ?? null;   // secrets, and config values that had to be asked for
@@ -423,7 +466,7 @@ function nodeSync() {
   const wiredHash = readJson(join(CFG, 'mcp-wire.state.json'))?.registry_hash;
   if (!flag('no-wire') && !process.env.VIGYAN_NO_WIRE && role !== 'server' && (changed || st.registry_hash !== rHash || wiredHash !== rHash || flag('force'))) {
     const a19 = [join(here, 'a19-install-llm-clis-all.sh'), '/usr/local/vigyan/a19-install-llm-clis-all.sh'].find(existsSync);
-    const r = a19 ? spawnSync('bash', [a19, 'wire', '--no-otlp'], { encoding: 'utf8', env: { ...process.env, ...Object.fromEntries(lines.map((l) => { const m = l.match(/^export ([A-Z0-9_]+)=/); return [m[1], parseShq(l.slice(m[0].length))]; })) }, timeout: 600000 }) : null;
+    const r = a19 ? spawnSync('bash', [a19, 'wire', '--no-otlp'], { encoding: 'utf8', env: { ...process.env, ...(L.isUser ? { VIGYAN_MCP_REGISTRY: L.path } : {}), ...Object.fromEntries(lines.map((l) => { const m = l.match(/^export ([A-Z0-9_]+)=/); return [m[1], parseShq(l.slice(m[0].length))]; })) }, timeout: 600000 }) : null;
     wired = r ? (r.status === 0 ? 'rewired' : `wire rc=${r.status}`) : 'wire not found';
   }
   emit('config.synced', { registry_hash: rHash, vault_hash: next.vault_hash, env_changed: changed, wired });
@@ -452,7 +495,7 @@ function status() {
   console.log(`node ${NODE} (${L.isMaster ? 'controller' : 'node'}); registry ${regHash(L)}; vault ${fileHash(L.vault)}; last sync ${st.synced_at ?? 'never'}; env file ${existsSync(SECRET_ENV) ? SECRET_ENV : 'not written'}`);
   console.log(`${pad('variable', 30)}${pad('kind', 10)}${pad('source', 26)}${pad('state', 10)}set at`);
   for (const [n, d] of Object.entries(env)) {
-    if (n.startsWith('$')) continue;
+    if (n.startsWith('$') || (L.isUser && d.secret && !d.user)) continue;
     const kind = d.secret ? 'secret' : d.sources?.[0]?.type === 'generate' ? 'generated' : 'config';
     const present = d.sources?.some((s) => (s.type === 'config' && s.value) || s.type === 'generate') || (vaultNames ? vaultNames.has(n) : st.present?.includes(n));
     console.log(`${pad(n, 30)}${pad(kind, 10)}${pad(d.secret ? meta[n]?.source ?? (d.sources ?? []).map((s) => s.type).join('>') : d.sources?.[0]?.type, 26)}${pad(present ? 'present' : want.has(n) ? 'MISSING' : 'unused', 10)}${meta[n]?.rotated_at ?? meta[n]?.set_at ?? ''}`);
@@ -515,6 +558,11 @@ function setup() {
   }
   writePrivate(FEATURES, JSON.stringify({ enabled: [...on], updated: new Date().toISOString(), by: NODE }, null, 2) + '\n');
   console.log(`features: ${[...on].join(', ')} (saved to ${FEATURES})`);
+  if (L.isUser) {   // team member: own age key + own vault; the operator's `llm-cli team sync` delivers keys into it
+    if (!agePublic()) keygenQuiet();
+    console.log(`per-user mode: own vault ${L.vault} (age key ${AGE_KEY}); set your own tokens with llm-cli secrets set NAME`);
+    nodeSync(); return;
+  }
   if (!L.isMaster) { console.log('this node is not the controller: secrets come from the controller (llm-cli sync --pull)'); nodeSync(); return; }
   const { missing } = bootstrap({ interactive });
   fleetSync();   // this node + every node in nodes.json (no-op for nodes already current)
@@ -542,6 +590,7 @@ function recipientsCmd() {
   writeSopsYaml(L);
   console.log(`${set.size} node recipient(s) in ${L.recipientsFile}${statics.size ? ` + ${statics.size} static (${[...statics.values()].join(', ')}) kept` : ''}`);
   if (existsSync(L.vault)) { encryptVault(L, decryptVault(L.vault)); console.log(`vault re-encrypted to ${recipients(L).length} recipient(s) (${fileHash(L.vault)})`); }
+  commitVault(L, 'recipients', [], recipientFiles(L));
   if (opt('backup-file')) writeBackupRecipients(L, expand(opt('backup-file')));
 }
 
@@ -551,6 +600,27 @@ function scan() {
   let values = [];
   try { values = L ? [...decryptVault(L.vault)].filter(([, v]) => v && v.length >= 8) : []; } catch { values = []; }
   const shapes = [/AGE-SECRET-KEY-1[0-9A-Z]{20,}/, /\bgh[opsu]_[A-Za-z0-9]{30,}/, /\bsk-[A-Za-z0-9_-]{20,}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/, /\bxox[bp]-[A-Za-z0-9-]{20,}/];
+  // --jsonl: a long-lived filter for indexers (llm-cli kb). Each stdin line is {"id","text"}; each
+  // stdout line is {"id","hits":[...]} naming the vault VARIABLE or the shape, never a value.
+  if (flag('jsonl')) {
+    // config values the registry marks secret:false (URLs such as COOLIFY_BASE_URL) are not credentials;
+    // matching them would drop every doc that names the host
+    const env = L?.reg?.env ?? {};
+    values = values.filter(([n]) => env[n]?.secret !== false);
+    let buf = '';
+    const check = (line) => {
+      if (!line.trim()) return;
+      let rec; try { rec = JSON.parse(line); } catch { process.stdout.write('{"id":null,"hits":["unparseable"]}\n'); return; }
+      const t = String(rec.text ?? ''); const hits = [];
+      for (const [n, v] of values) if (t.includes(v)) hits.push(`value of ${n}`);
+      for (const re of shapes) if (re.test(t)) hits.push(`key-shaped ${re.source.slice(0, 24)}`);
+      process.stdout.write(JSON.stringify({ id: rec.id ?? null, hits }) + '\n');
+    };
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (c) => { buf += c; let i; while ((i = buf.indexOf('\n')) >= 0) { check(buf.slice(0, i)); buf = buf.slice(i + 1); } });
+    process.stdin.on('end', () => { check(buf); values = []; });
+    return;
+  }
   let text = '';
   const files = args.filter((a) => !a.startsWith('--') && a !== 'scan' && a !== 'secrets');
   if (flag('staged') || !files.length) text = spawnSync('git', ['diff', '--cached', '-U0'], { encoding: 'utf8', maxBuffer: 64 << 20 }).stdout || '';
@@ -700,6 +770,7 @@ function escrowInit() {
   writeFileSync(L.staticRecipientsFile, `# static age PUBLIC recipients of the fleet vault (not nodes; kept by recipients --collect).\n# recovery = offline key on paper/USB (llm-cli secrets escrow). Never put a secret key here.\n${[...keep, [pub, `recovery (offline; escrow init ${new Date().toISOString().slice(0, 10)} on ${NODE})`]].map(([k, n]) => `${k} # ${n}`).join('\n')}\n`);
   writeSopsYaml(L);
   encryptVault(L, decryptVault(L.vault));
+  commitVault(L, `escrow ${old.length ? 'replace' : 'init'}`, [], recipientFiles(L));
   emit('secrets.escrow', { action: old.length ? 'replaced' : 'init', recipients: recipients(L).length, vault_hash: fileHash(L.vault) });
   console.log(`recovery key added as a static recipient (${pub.slice(0, 16)}…); vault re-encrypted to ${recipients(L).length} recipients (${fileHash(L.vault)})`);
   console.log('next: 1) llm-cli secrets escrow verify (type it back from paper)');
