@@ -599,14 +599,14 @@ function scan() {
   const L = (() => { try { return loadRegistry(); } catch { return null; } })();
   let values = [];
   try { values = L ? [...decryptVault(L.vault)].filter(([, v]) => v && v.length >= 8) : []; } catch { values = []; }
+  // config values the registry marks secret:false (URLs such as COOLIFY_BASE_URL) are not credentials:
+  // matching them flags every doc/commit that names the host. Applies to every scan mode.
+  const envDecl = L?.reg?.env ?? {};
+  values = values.filter(([n]) => envDecl[n]?.secret !== false);
   const shapes = [/AGE-SECRET-KEY-1[0-9A-Z]{20,}/, /\bgh[opsu]_[A-Za-z0-9]{30,}/, /\bsk-[A-Za-z0-9_-]{20,}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/, /\bxox[bp]-[A-Za-z0-9-]{20,}/];
   // --jsonl: a long-lived filter for indexers (llm-cli kb). Each stdin line is {"id","text"}; each
   // stdout line is {"id","hits":[...]} naming the vault VARIABLE or the shape, never a value.
   if (flag('jsonl')) {
-    // config values the registry marks secret:false (URLs such as COOLIFY_BASE_URL) are not credentials;
-    // matching them would drop every doc that names the host
-    const env = L?.reg?.env ?? {};
-    values = values.filter(([n]) => env[n]?.secret !== false);
     let buf = '';
     const check = (line) => {
       if (!line.trim()) return;
