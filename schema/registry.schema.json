@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/manishknema/vigyan-llm-cli/schema/registry.schema.json",
   "title": "llm-cli registry (v3)",
-  "description": "One file for MCP servers, global skills, the feature catalog `llm-cli setup` offers, and every environment variable those servers need with the sources llm-cli tries to fill it from. Secret VALUES never appear here: they live only in the SOPS+age vault.",
+  "description": "One file for MCP servers, global skills, the feature catalog `vault setup` offers, and every environment variable those servers need with the sources llm-cli tries to fill it from. Secret VALUES never appear here: they live only in the SOPS+age vault.",
   "type": "object",
   "required": ["version", "mcp"],
   "properties": {

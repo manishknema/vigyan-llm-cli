@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// vigyan-secrets.mjs -- `llm-cli secrets | setup | features | sync`: MCP secrets and config,
+// vigyan-secrets.mjs -- `vault | setup | features | sync`: MCP secrets and config,
 // resolved once, kept in one SOPS+age vault, delivered to every node, picked up by every CLI.
 //
 // Sources of truth (each has a content hash; `llm-cli sync` moves changes to every node):
@@ -65,7 +65,7 @@ const LOCAL_CONF = (() => { try { return JSON.parse(readFileSync(join(HOME, '.co
 const MASTER = [process.env.VIGYAN_MCP_REGISTRY, LOCAL_CONF.registry_master && LOCAL_CONF.registry_master.replace(/^~(?=$|[\\/])/, HOME), join(HOME, '.config', 'vigyan', 'registry.json')].find((p) => p && existsSync(p));
 const RT_RUNTIME = '.local/share/vigyan/llm-cli';
 // Per-user mode (team members, docs/operator/OPS_TEAM_ACCESS.md): llm-cli.json {"mode": "user"}, written by
-// `llm-cli team sync`. Servers/URLs come from the fleet registry bundle the operator copies in; secrets come
+// `vteam sync`. Servers/URLs come from the fleet registry bundle the operator copies in; secrets come
 // from the user's OWN small vault (user-vault/user.sops.env, encrypted to the user's own age key only) and
 // only for variables the registry marks `user: true`. The fleet vault is never involved.
 const USER_MODE = LOCAL_CONF.mode === 'user' || process.env.VIGYAN_USER_VAULT === '1';
@@ -78,7 +78,7 @@ function loadRegistry() {
   if (USER_MODE) {
     const p = join(BUNDLE, 'registry.resolved.json');
     const reg = readJson(p);
-    if (!reg) die(`no registry bundle at ${p}: the operator runs \`llm-cli team sync\` to deliver it`);
+    if (!reg) die(`no registry bundle at ${p}: the operator runs \`vteam sync\` to deliver it`);
     return { reg, path: p, isMaster: false, isUser: true, vault: join(USER_VAULT_DIR, 'user.sops.env'), meta: join(USER_VAULT_DIR, 'user.meta.json'), recipientsFile: null, staticRecipientsFile: null };
   }
   const p = MASTER && existsSync(MASTER) ? MASTER : join(BUNDLE, 'registry.resolved.json');
@@ -96,12 +96,12 @@ function loadRegistry() {
 }
 const regHash = (L) => L.reg.hash ?? readJson(join(BUNDLE, 'registry.resolved.json'))?.hash ?? fileHash(L.path);
 const fileHash = (p) => (existsSync(p) ? sha(readFileSync(p)).slice(0, 12) : '-');
-function die(msg, code = 2) { console.error(`llm-cli secrets: ${msg}`); process.exit(code); }
+function die(msg, code = 2) { console.error(`vault: ${msg}`); process.exit(code); }
 
 // ── sops ─────────────────────────────────────────────────────────────────────
 function sops(argv, input) {
   const r = spawnSync('sops', argv, { encoding: 'utf8', input, env: { ...process.env, SOPS_AGE_KEY_FILE: AGE_KEY }, maxBuffer: 16 << 20 });
-  if (r.error) die(`sops not found (llm-cli secrets install-sops): ${r.error.code}`);
+  if (r.error) die(`sops not found (vault install-sops): ${r.error.code}`);
   return r;
 }
 function parseDotenv(text) {
@@ -115,7 +115,7 @@ function parseDotenv(text) {
 function decryptVault(vault) {
   if (!existsSync(vault)) return new Map();
   const r = sops(['--decrypt', '--input-type', 'dotenv', '--output-type', 'dotenv', vault]);
-  if (r.status !== 0) die(`cannot decrypt ${vault} with ${AGE_KEY} (is this node a recipient? llm-cli secrets recipients --collect on the controller)`);
+  if (r.status !== 0) die(`cannot decrypt ${vault} with ${AGE_KEY} (is this node a recipient? vault recipients --collect on the controller)`);
   return parseDotenv(r.stdout);
 }
 // recipient files: one `age1… # label` per line (age X25519 keys, or plugin recipients such as
@@ -158,7 +158,7 @@ function writeSopsYaml(L) {
 // age -R format for the secrets backup tarballs (a6): comments on their own lines, age rejects trailing ones
 function writeBackupRecipients(L, file) {
   const all = new Map([...readRecipientFile(L.recipientsFile), ...readRecipientFile(L.staticRecipientsFile)]);
-  writeFileSync(file, `# fleet vault recipients (node keys + static, e.g. the offline recovery key) for backup encryption.\n# PUBLIC keys only. Written by llm-cli secrets recipients --backup-file; age rejects trailing comments.\n${[...all].map(([k, n]) => `# ${n}\n${k}`).join('\n')}\n`);
+  writeFileSync(file, `# fleet vault recipients (node keys + static, e.g. the offline recovery key) for backup encryption.\n# PUBLIC keys only. Written by vault recipients --backup-file; age rejects trailing comments.\n${[...all].map(([k, n]) => `# ${n}\n${k}`).join('\n')}\n`);
   console.log(`backup recipients (${all.size}) written to ${file}: commit it and re-install the backup (a6-backup-daily --install) so the tarballs use them`);
 }
 // After every vault write: copy the ciphertext to a mirror dir (Nextcloud admin/files/Vigyan-Vault on the
@@ -180,7 +180,7 @@ function mirrorVault(L) {
 function encryptVault(L, map) {
   let rc = recipients(L);
   if (!rc.length && !existsSync(AGE_KEY)) { keygenQuiet(); rc = recipients(L); }
-  if (!rc.length) die('no vault recipients (llm-cli secrets keygen, then recipients --collect)');
+  if (!rc.length) die('no vault recipients (vault keygen, then recipients --collect)');
   const dir = join(HOME, '.cache', 'vigyan', 'secrets-tmp');
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const tmp = join(dir, `plain-${process.pid}-${randomBytes(4).toString('hex')}.env`);
@@ -231,7 +231,7 @@ function keygen() {
     const d = Buffer.from(privateKey.export({ format: 'jwk' }).d, 'base64url');
     const x = Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url');
     const pub = bech32Encode('age', x);
-    writePrivate(AGE_KEY, `# created: ${new Date().toISOString()} by llm-cli secrets keygen on ${NODE}\n# public key: ${pub}\n${bech32Encode('age-secret-key-', d).toUpperCase()}\n`);
+    writePrivate(AGE_KEY, `# created: ${new Date().toISOString()} by vault keygen on ${NODE}\n# public key: ${pub}\n${bech32Encode('age-secret-key-', d).toUpperCase()}\n`);
     console.error(`created age key ${AGE_KEY} (600). Back it up offline: losing every recipient key loses the vault.`);
   }
   console.log(flag('public') ? agePublic() : `${NODE} ${agePublic()}`);
@@ -339,7 +339,7 @@ function bootstrap({ only, refresh, interactive } = {}) {
   for (const r of rows) console.log(`${pad(r[0], 30)}${pad(r[1], 28)}${r[2]}`);
   console.log(`vault ${L.vault} (${fileHash(L.vault)}): ${changed.length} changed${changed.length ? ` (${changed.join(', ')})` : ''}, ${missing.length} missing`);
   if (missing.length) {
-    console.log('\nMissing values and where to get them (then: llm-cli secrets set NAME):');
+    console.log('\nMissing values and where to get them (then: vault set NAME):');
     for (const n of missing) printGuide(n, env[n].guide ?? {});
   }
   return { changed, missing };
@@ -402,14 +402,14 @@ function scrubLiteralDefaults(secretNames) {
   const hit = [];
   for (const n of secretNames) {
     const re = new RegExp(`\\$\\{${n}:-[^}$]+\\}`, 'g');
-    if (re.test(txt)) { txt = txt.replace(re, `\${${n}:?${n} not set: llm-cli secrets sync}`); hit.push(n); }
+    if (re.test(txt)) { txt = txt.replace(re, `\${${n}:?${n} not set: vault sync}`); hit.push(n); }
   }
   if (hit.length) { writePrivate(rc + `.bak-scrub-${Date.now()}`, readFileSync(rc, 'utf8')); writeFileSync(rc, txt); }
   return hit;
 }
 function ensureBashrc() {
   const rc = join(HOME, '.bashrc');
-  const begin = '# >>> vigyan mcp env (llm-cli secrets sync)', end = '# <<< vigyan mcp env';
+  const begin = '# >>> vigyan mcp env (llm-cli secrets sync)', end = '# <<< vigyan mcp env';   // marker text is how existing ~/.bashrc blocks are found: never rename it
   const body = `${begin}\n[ -r "$HOME/.config/vigyan/secret.d/mcp.env" ] && . "$HOME/.config/vigyan/secret.d/mcp.env"\n${end}`;
   const cur = existsSync(rc) ? readFileSync(rc, 'utf8') : '';
   if (cur.includes(begin)) return false;
@@ -451,7 +451,7 @@ function nodeSync() {
     if (v) { lines.push(`export ${n}=${shq(v)}`); have.push(n); } else if (wanted.has(n)) lack.push(n);
     v = null;
   }
-  const body = `# managed by llm-cli secrets sync on ${NODE}; do not edit (llm-cli secrets set / registry env)\n${lines.join('\n')}\n`;
+  const body = `# managed by vault sync on ${NODE}; do not edit (vault set / registry env)\n${lines.join('\n')}\n`;
   const prev = existsSync(SECRET_ENV) ? readFileSync(SECRET_ENV, 'utf8') : '';
   const changed = sha(prev.replace(/^#.*\n/, '')) !== sha(body.replace(/^#.*\n/, ''));
   if (changed) writePrivate(SECRET_ENV, body);
@@ -517,8 +517,8 @@ function featuresCmd() {
 }
 function featuresDoc(reg) {
   const env = reg.env ?? {};
-  let out = '# Features\n\nGenerated from the feature catalog (`llm-cli features --docs`); edit the catalog, not this file.\n' +
-    'Pick features with `llm-cli setup` (interactive) or `llm-cli setup --features a,b --yes` (agents/CI).\n';
+  let out = '# Features\n\nGenerated from the feature catalog (`vault features --docs`); edit the catalog, not this file.\n' +
+    'Pick features with `vault setup` (interactive) or `vault setup --features a,b --yes` (agents/CI).\n';
   for (const g of [...new Set(catalog(reg).map((f) => f.group))]) {
     out += `\n## ${g}\n`;
     for (const f of catalog(reg).filter((x) => x.group === g)) {
@@ -541,7 +541,7 @@ function setup() {
   let on = new Set(enabledFeatures(L.reg));
   const list = (v) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : []);
   const bad = [...list(opt('features')), ...list(opt('add')), ...list(opt('remove'))].filter((x) => !ids.has(x));
-  if (bad.length) die(`unknown feature(s): ${bad.join(', ')} (llm-cli features)`);
+  if (bad.length) die(`unknown feature(s): ${bad.join(', ')} (vault features)`);
   if (opt('features')) on = new Set(list(opt('features')));
   for (const x of list(opt('add'))) on.add(x);
   for (const x of list(opt('remove'))) on.delete(x);
@@ -558,15 +558,15 @@ function setup() {
   }
   writePrivate(FEATURES, JSON.stringify({ enabled: [...on], updated: new Date().toISOString(), by: NODE }, null, 2) + '\n');
   console.log(`features: ${[...on].join(', ')} (saved to ${FEATURES})`);
-  if (L.isUser) {   // team member: own age key + own vault; the operator's `llm-cli team sync` delivers keys into it
+  if (L.isUser) {   // team member: own age key + own vault; the operator's `vteam sync` delivers keys into it
     if (!agePublic()) keygenQuiet();
-    console.log(`per-user mode: own vault ${L.vault} (age key ${AGE_KEY}); set your own tokens with llm-cli secrets set NAME`);
+    console.log(`per-user mode: own vault ${L.vault} (age key ${AGE_KEY}); set your own tokens with vault set NAME`);
     nodeSync(); return;
   }
   if (!L.isMaster) { console.log('this node is not the controller: secrets come from the controller (llm-cli sync --pull)'); nodeSync(); return; }
   const { missing } = bootstrap({ interactive });
   fleetSync();   // this node + every node in nodes.json (no-op for nodes already current)
-  if (missing.length && !interactive) { console.error(`\nsetup: ${missing.length} value(s) still missing (${missing.join(', ')}); see the guide above, then llm-cli secrets set NAME`); process.exitCode = 2; }
+  if (missing.length && !interactive) { console.error(`\nsetup: ${missing.length} value(s) still missing (${missing.join(', ')}); see the guide above, then vault set NAME`); process.exitCode = 2; }
 }
 
 // ── recipients ───────────────────────────────────────────────────────────────
@@ -579,7 +579,7 @@ function recipientsCmd() {
   const own = agePublic(); if (own) set.set(own, NODE);
   if (flag('collect')) {
     for (const n of (readJson(NODES)?.nodes ?? []).filter((x) => x.ssh !== 'local' && x.enabled !== false)) {
-      const r = remoteRun(n, `VIGYAN_REPO=~/${RT_RUNTIME} bash ~/${RT_RUNTIME}/scripts/a19-install-llm-clis-all.sh secrets keygen --public`);
+      const r = remoteRun(n, `VIGYAN_FRONT_DOOR=vault VIGYAN_REPO=~/${RT_RUNTIME} bash ~/${RT_RUNTIME}/scripts/a19-install-llm-clis-all.sh secrets keygen --public`);
       const k = (r.stdout || '').match(/age1[0-9a-z]{50,}/)?.[0];
       console.log(`  ${pad(n.name, 18)} ${k ? 'public key collected' : `FAILED (${(r.stderr || '').trim().split('\n').pop()?.slice(0, 80) || 'no runtime? llm-cli push --node ' + n.name + ' install'})`}`);
       if (k) set.set(k, n.name);
@@ -604,7 +604,7 @@ function scan() {
   const envDecl = L?.reg?.env ?? {};
   values = values.filter(([n]) => envDecl[n]?.secret !== false);
   const shapes = [/AGE-SECRET-KEY-1[0-9A-Z]{20,}/, /\bgh[opsu]_[A-Za-z0-9]{30,}/, /\bsk-[A-Za-z0-9_-]{20,}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/, /\bxox[bp]-[A-Za-z0-9-]{20,}/];
-  // --jsonl: a long-lived filter for indexers (llm-cli kb). Each stdin line is {"id","text"}; each
+  // --jsonl: a long-lived filter for indexers (kb). Each stdin line is {"id","text"}; each
   // stdout line is {"id","hits":[...]} naming the vault VARIABLE or the shape, never a value.
   if (flag('jsonl')) {
     let buf = '';
@@ -695,7 +695,7 @@ function fleetSync() {
       if (r.status !== 0) ok = false;
     }
     if (!ok) { rows.push([n.name, 'copy FAILED', '-']); continue; }
-    const r = remoteRun(n, `VIGYAN_REPO=~/${RT_RUNTIME} bash ~/${RT_RUNTIME}/scripts/a19-install-llm-clis-all.sh secrets sync`);
+    const r = remoteRun(n, `VIGYAN_FRONT_DOOR=vault VIGYAN_REPO=~/${RT_RUNTIME} bash ~/${RT_RUNTIME}/scripts/a19-install-llm-clis-all.sh secrets sync`);
     rows.push([n.name, `synced (${behind.join(', ') || 'forced'})`, r.status === 0 ? (String(r.stdout).trim().split('\n').find((l) => l.startsWith('secrets sync')) ?? 'ok').replace(/^secrets sync on \S+: /, '') : `rc=${r.status} ${String(r.stderr || '').trim().split('\n').pop()?.slice(0, 80)}`]);
   }
   emit('config.synced', { scope: 'fleet', registry_hash: want.registry_hash, vault_hash: want.vault_hash, nodes: rows.map((r) => `${r[0]}:${r[1]}`).join(';').slice(0, 400) });
@@ -767,15 +767,15 @@ function escrowInit() {
   }
   toTty('\x1b[2J\x1b[3J\x1b[H');   // clear screen + scrollback (most terminals); also clear it yourself if yours keeps history
   const keep = [...statics].filter(([, n]) => !/^recovery/.test(n));
-  writeFileSync(L.staticRecipientsFile, `# static age PUBLIC recipients of the fleet vault (not nodes; kept by recipients --collect).\n# recovery = offline key on paper/USB (llm-cli secrets escrow). Never put a secret key here.\n${[...keep, [pub, `recovery (offline; escrow init ${new Date().toISOString().slice(0, 10)} on ${NODE})`]].map(([k, n]) => `${k} # ${n}`).join('\n')}\n`);
+  writeFileSync(L.staticRecipientsFile, `# static age PUBLIC recipients of the fleet vault (not nodes; kept by recipients --collect).\n# recovery = offline key on paper/USB (vault escrow). Never put a secret key here.\n${[...keep, [pub, `recovery (offline; escrow init ${new Date().toISOString().slice(0, 10)} on ${NODE})`]].map(([k, n]) => `${k} # ${n}`).join('\n')}\n`);
   writeSopsYaml(L);
   encryptVault(L, decryptVault(L.vault));
   commitVault(L, `escrow ${old.length ? 'replace' : 'init'}`, [], recipientFiles(L));
   emit('secrets.escrow', { action: old.length ? 'replaced' : 'init', recipients: recipients(L).length, vault_hash: fileHash(L.vault) });
   console.log(`recovery key added as a static recipient (${pub.slice(0, 16)}…); vault re-encrypted to ${recipients(L).length} recipients (${fileHash(L.vault)})`);
-  console.log('next: 1) llm-cli secrets escrow verify (type it back from paper)');
-  console.log('      2) llm-cli secrets recipients --backup-file <VVC checkout>/configs/backup/age-recipients.txt, commit, a6-backup-daily --install (git drill)');
-  console.log('      3) llm-cli secrets escrow export-usb <USB mountpoint> (encrypted vault copy for the stick; the key goes into KeePassXC there)');
+  console.log('next: 1) vault escrow verify (type it back from paper)');
+  console.log('      2) vault recipients --backup-file <VVC checkout>/configs/backup/age-recipients.txt, commit, a6-backup-daily --install (git drill)');
+  console.log('      3) vault escrow export-usb <USB mountpoint> (encrypted vault copy for the stick; the key goes into KeePassXC there)');
 }
 function escrowVerify() {
   const L = loadRegistry();
@@ -796,7 +796,7 @@ function escrowVerify() {
     writePrivate(kf, sec.trim().toUpperCase() + '\n');
     const env = { PATH: process.env.PATH, HOME: dir, XDG_CONFIG_HOME: dir, SOPS_AGE_KEY_FILE: kf };
     const r = spawnSync('sops', ['--decrypt', '--input-type', 'dotenv', '--output-type', 'dotenv', L.vault], { encoding: 'utf8', env, maxBuffer: 16 << 20 });
-    if (r.status !== 0) die(`the recovery key does NOT decrypt ${L.vault}: it is not one of its recipients (llm-cli secrets recipients lists them)`, 1);
+    if (r.status !== 0) die(`the recovery key does NOT decrypt ${L.vault}: it is not one of its recipients (vault recipients lists them)`, 1);
     const names = [...parseDotenv(r.stdout).keys()].sort();
     console.log(`OK: the recovery key decrypts the vault (${names.length} variables, values not shown):`);
     for (const n of names) console.log(`  ${n}`);
@@ -833,7 +833,7 @@ function exportVaultTo(L, dest) {   // dest = <stick>/vigyan-vault; returns the 
   const recips = [...new Map([...readRecipientFile(L.recipientsFile), ...readRecipientFile(L.staticRecipientsFile)])].map(([k, n]) => `- ${n}: \`${k}\``).join('\n');
   writeFileSync(join(dest, 'README.md'), `# Vigyan fleet vault — offline copy
 
-Written ${new Date().toISOString()} by \`llm-cli secrets escrow export-usb\` on ${NODE}.
+Written ${new Date().toISOString()} by \`vault escrow export-usb\` on ${NODE}.
 \`${basename(L.vault)}\` is the SOPS+age **encrypted** vault (values are ciphertext; names are readable).
 \`${basename(L.vault)}.prev\` is the copy this one replaced. No key is on this stick.
 
@@ -857,8 +857,8 @@ ${bundle ? `The encrypted git bundle of the vault's repo is in \`lifeos/\` (${bu
 
     age -d -i /dev/shm/r.txt lifeos/lifeos-latest.bundle.age > /dev/shm/l.bundle && git clone /dev/shm/l.bundle lifeOS-personal && shred -u /dev/shm/l.bundle
 
-` : ''}Then re-create machine keys (\`llm-cli secrets keygen\`), put the vault back under
-\`lifeOS-personal/secrets/\`, run \`llm-cli secrets recipients --collect\` and \`llm-cli sync\`.
+` : ''}Then re-create machine keys (\`vault keygen\`), put the vault back in its registry
+repo's \`secrets/\` folder, run \`vault recipients --collect\` and \`llm-cli sync\`.
 A YubiKey recipient (\`age1yubikey1…\`, if added later) needs \`age-plugin-yubikey\` on PATH:
 \`age-plugin-yubikey --identity > /dev/shm/yk.txt\` and use that file as SOPS_AGE_KEY_FILE.
 `);

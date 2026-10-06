@@ -1,5 +1,5 @@
 {
-  "$comment": "Example llm-cli registry. Copy to ~/.config/vigyan/registry.json (or point ~/.config/vigyan/llm-cli.json registry_master at it), adjust the config values, then run `llm-cli setup`. Never put secret values here: secrets live only in the SOPS+age vault.",
+  "$comment": "Example llm-cli registry. Copy to ~/.config/vigyan/registry.json (or point ~/.config/vigyan/llm-cli.json registry_master at it), adjust the config values, then run `vault setup`. Never put secret values here: secrets live only in the SOPS+age vault.",
   "version": 3,
   "imports": [],
   "mcp": {

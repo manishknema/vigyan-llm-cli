@@ -1,7 +1,7 @@
 # Features
 
-Generated from the feature catalog (`llm-cli features --docs`); edit the catalog, not this file.
-Pick features with `llm-cli setup` (interactive) or `llm-cli setup --features a,b --yes` (agents/CI).
+Generated from the feature catalog (`vault features --docs`); edit the catalog, not this file.
+Pick features with `vault setup` (interactive) or `vault setup --features a,b --yes` (agents/CI).
 
 ## Agents
 

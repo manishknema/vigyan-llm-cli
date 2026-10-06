@@ -1,6 +1,11 @@
 # Secrets, config and features: configure once, every machine follows
 
-`llm-cli setup` asks what you want, fills in everything it can find on its own, and asks you once,
+> **Commands.** The vault has its own command, `vault`, next to `llm-cli`. It is a thin front door
+> (`vault <verb>` runs `llm-cli secrets <verb>`; `vault setup` / `vault features` run `llm-cli setup` /
+> `llm-cli features`; bare `vault` = `vault status`). The `llm-cli secrets …` form still works and
+> prints a one-line note. Team access is `vteam`, and the knowledge base is `kb`, the same way.
+
+`vault setup` asks what you want, fills in everything it can find on its own, and asks you once,
 with directions, for the rest. After that, a change on one machine (a rotated token, a new URL, a
 new feature) reaches every machine and every coding agent CLI on its own.
 
@@ -30,26 +35,26 @@ Every variable in `registry.env` lists `sources`, tried in order:
 
 Values only move file → vault → file. They are never printed, logged, passed on a command line,
 sent to telemetry, or written anywhere except the vault and `~/.config/vigyan/secret.d/mcp.env`
-(mode 600). `llm-cli secrets status` shows names, sources, present/missing and dates, never values.
-`llm-cli secrets scan --staged` fails a commit that contains any vault value or a key-shaped string.
+(mode 600). `vault status` shows names, sources, present/missing and dates, never values.
+`vault scan --staged` fails a commit that contains any vault value or a key-shaped string.
 
 ## Commands
 
 ```
-llm-cli setup                                   # pick features, fill values, sync, wire every CLI
-llm-cli setup --add n8n | --remove postiz       # change the feature set later
-llm-cli setup --features github,telemetry --yes # agents/CI: never prompts; lists what is missing and exits 2
-llm-cli features [--docs]                       # on/off/missing per feature; --docs regenerates docs/FEATURES.md
-llm-cli secrets status | set NAME | rotate NAME | bootstrap [--refresh]
-llm-cli secrets keygen | recipients --collect   # one age key per machine; the vault is encrypted to all of them
-llm-cli secrets escrow init | verify             # offline recovery key (static recipient), shown once; verify lists names
-llm-cli secrets escrow export-usb MOUNTPOINT     # encrypted vault copy (+ .prev) + README to a removable stick
+vault setup                                   # pick features, fill values, sync, wire every CLI
+vault setup --add n8n | --remove postiz       # change the feature set later
+vault setup --features github,telemetry --yes # agents/CI: never prompts; lists what is missing and exits 2
+vault features [--docs]                       # on/off/missing per feature; --docs regenerates docs/FEATURES.md
+vault status | set NAME | rotate NAME | bootstrap [--refresh]
+vault keygen | recipients --collect   # one age key per machine; the vault is encrypted to all of them
+vault escrow init | verify             # offline recovery key (static recipient), shown once; verify lists names
+vault escrow export-usb MOUNTPOINT     # encrypted vault copy (+ .prev) + README to a removable stick
 llm-cli sync [--check]                          # push changed registry / vault / runtime to every machine
 ```
 
 ## How the CLIs see the values
 
-`llm-cli secrets sync` writes `~/.config/vigyan/secret.d/mcp.env` (600) and makes `~/.bashrc` and
+`vault sync` writes `~/.config/vigyan/secret.d/mcp.env` (600) and makes `~/.bashrc` and
 the CLI wrappers source it. `llm-cli wire` writes each CLI's MCP config with variable **names** only
 (Claude `${VAR}`, Codex `bearer_token_env_var`/`env_vars`, OpenCode `{env:VAR}`, Antigravity through
 a small `sh -c` bridge), so a rotated value needs no config rewrite. Running agent sessions keep the
@@ -57,7 +62,7 @@ environment they started with; `llm-cli status` tells you when to restart them.
 
 ## Several machines
 
-On the controller, `llm-cli nodes add …` registers a machine, `llm-cli secrets recipients --collect`
+On the controller, `llm-cli nodes add …` registers a machine, `vault recipients --collect`
 adds its age public key (public keys only travel), and `llm-cli sync` delivers the runtime, the
 resolved registry and the vault over your existing SSH trust. Each machine decrypts locally with
 its own key. A machine that was offline catches up on its next hourly run (it pulls from the
@@ -66,7 +71,7 @@ prefixes only.
 
 ## Recovery key (escrow)
 
-If every machine key is lost, the vault cannot be decrypted. `llm-cli secrets escrow init` adds an
+If every machine key is lost, the vault cannot be decrypted. `vault escrow init` adds an
 offline recovery key as a static recipient (`secrets/recipients.static.txt`, kept by
 `recipients --collect`):
 
@@ -75,12 +80,12 @@ offline recovery key as a static recipient (`secrets/recipients.static.txt`, kep
 - **Confirmed before it counts.** You type the key's last 8 characters back. A wrong answer
   changes nothing. On success the screen and scrollback are cleared and the vault is
   re-encrypted.
-- **Proved later.** `llm-cli secrets escrow verify` takes the key typed from paper and lists the
+- **Proved later.** `vault escrow verify` takes the key typed from paper and lists the
   variable names it decrypts. The check uses a temporary file in `/dev/shm` with no other key in
   reach, then shreds it.
-- **Covers backups too.** `llm-cli secrets recipients --backup-file PATH` writes nodes + static
+- **Covers backups too.** `vault recipients --backup-file PATH` writes nodes + static
   keys in `age -R` format, for any backup you encrypt to the same people.
-- **Offline copy.** `llm-cli secrets escrow export-usb MOUNTPOINT` writes the encrypted vault (keeping
+- **Offline copy.** `vault escrow export-usb MOUNTPOINT` writes the encrypted vault (keeping
   the previous copy as `.prev`), the public recipients and a recovery README to a USB stick. It
   refuses any mountpoint that is not on a removable disk, and never writes a key.
   With `usb_bundle_dir` set, the newest `*.bundle.age` there (an encrypted `git bundle` of the vault's
@@ -93,13 +98,13 @@ offline recovery key as a static recipient (`secrets/recipients.static.txt`, kep
 ## Sample (fake values, sandbox home)
 
 ```
-$ llm-cli setup --features github,telemetry,automation-n8n --yes
+$ vault setup --features github,telemetry,automation-n8n --yes
 features: github, telemetry, automation-n8n
 variable                      source                      state
 GITHUB_PERSONAL_ACCESS_TOKEN  cmd > ask                   MISSING
 N8N_URL                       ask                         MISSING
 N8N_MCP_TOKEN                 ask                         MISSING
-Missing values and where to get them (then: llm-cli secrets set NAME):
+Missing values and where to get them (then: vault set NAME):
   GITHUB_PERSONAL_ACCESS_TOKEN
     where:  GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens …
     scopes: only the repos agents work on: Contents, Pull requests, Issues (read/write), Actions (read)
