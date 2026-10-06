@@ -855,7 +855,7 @@ On any Linux machine with \`sops\` and \`age\`:
 
 ${bundle ? `The encrypted git bundle of the vault's repo is in \`lifeos/\` (${bundle.name}, ${bundle.at || 'date in its .json'}):
 
-    age -d -i /dev/shm/r.txt lifeos/lifeos-latest.bundle.age > /dev/shm/l.bundle && git clone /dev/shm/l.bundle lifeOS-personal && shred -u /dev/shm/l.bundle
+    age -d -i /dev/shm/r.txt lifeos/lifeos-latest.bundle.age > /dev/shm/l.bundle && git clone /dev/shm/l.bundle restored-repo && shred -u /dev/shm/l.bundle
 
 ` : ''}Then re-create machine keys (\`vault keygen\`), put the vault back in its registry
 repo's \`secrets/\` folder, run \`vault recipients --collect\` and \`llm-cli sync\`.
